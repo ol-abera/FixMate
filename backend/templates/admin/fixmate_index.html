@@ -1,0 +1,12 @@
+{% extends "admin/index.html" %}
+{% block content %}
+<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px">
+  {% for label, value in platform_stats.items %}
+  <div style="border:1px solid #ddd;border-radius:8px;padding:12px 16px;min-width:130px">
+    <div style="font-size:12px;text-transform:uppercase;opacity:.7">{{ label }}</div>
+    <div style="font-size:22px;font-weight:700">{{ value }}</div>
+  </div>
+  {% endfor %}
+</div>
+{{ block.super }}
+{% endblock %}
