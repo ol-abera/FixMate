@@ -3,7 +3,7 @@
  * to the existing frontend domain types (camelCase, lowercase).
  */
 import type {
-  AuthUser, BookingRequest, BookingStatus, Conversation, Message, NotificationItem,
+  AuthUser, BookingPayment, BookingRequest, BookingStatus, Conversation, Message, NotificationItem,
   PricingTier, Provider, ProviderService, PublicStats, Review, ServiceCategory,
 } from "../data/mockData";
 
@@ -204,6 +204,27 @@ export function toBooking(b: any): BookingRequest {
     review: b.review ? { id: String(b.review.id), rating: b.review.rating, comment: b.review.comment } : null,
     notes: b.notes ?? "",
     photos: (b.photos ?? []).map((p: any) => ({ id: String(p.id), url: p.image })),
+    payment: b.payment ? { status: String(b.payment.status).toLowerCase() as BookingPayment["status"], amount: Number(b.payment.amount), paidAt: b.payment.paid_at ?? null } : null,
+    canPay: !!b.can_pay,
+  };
+}
+
+export interface PaymentSession {
+  bookingId: string;
+  title: string;
+  providerName: string;
+  amount: number;
+  currency: string;
+  gateway: "stripe" | "mock";
+  status: BookingPayment["status"];
+  failureReason: string;
+}
+
+export function toPaymentSession(p: any): PaymentSession {
+  return {
+    bookingId: String(p.booking), title: p.booking_title, providerName: p.provider_name, amount: Number(p.amount),
+    currency: p.currency, gateway: p.gateway, status: String(p.status).toLowerCase() as BookingPayment["status"],
+    failureReason: p.failure_reason ?? "",
   };
 }
 
@@ -337,6 +358,16 @@ export const api = {
     return request(`/bookings/${id}/photos/`, { method: "POST", form });
   },
   deleteBookingPhoto(id: string, photoId: string) { return request(`/bookings/${id}/photos/${photoId}/`, { method: "DELETE" }); },
+  startCheckout(bookingId: string) {
+    return request<{ checkout_url: string }>("/payments/checkout/", { method: "POST", body: { booking: Number(bookingId) } });
+  },
+  async paymentSession(sessionId: string): Promise<PaymentSession> { return toPaymentSession(await request<any>(`/payments/session/${encodeURIComponent(sessionId)}/`)); },
+  async syncPayment(sessionId: string): Promise<PaymentSession> {
+    return toPaymentSession(await request<any>("/payments/sync/", { method: "POST", body: { session_id: sessionId } }));
+  },
+  async confirmMockPayment(sessionId: string, cardNumber: string): Promise<PaymentSession> {
+    return toPaymentSession(await request<any>("/payments/mock/confirm/", { method: "POST", body: { session_id: sessionId, card_number: cardNumber } }));
+  },
   async bookingAction(id: string, action: "accept" | "decline" | "start" | "complete" | "cancel", finalPrice?: number): Promise<BookingRequest> {
     const body = finalPrice !== undefined ? { final_price: finalPrice } : undefined;
     return toBooking(await request<any>(`/bookings/${id}/${action}/`, { method: "POST", body }));

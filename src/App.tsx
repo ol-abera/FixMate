@@ -30,6 +30,9 @@ const AboutPage = named(misc, "AboutPage");
 const HelpPage = named(misc, "HelpPage");
 const ForgotPasswordPage = named(misc, "ForgotPasswordPage");
 const ResetPasswordPage = named(misc, "ResetPasswordPage");
+const checkout = () => import("./pages/Checkout");
+const MockCheckoutPage = named(checkout, "MockCheckoutPage");
+const CheckoutReturnPage = named(checkout, "CheckoutReturnPage");
 
 function PageFallback() {
   return (
@@ -75,6 +78,8 @@ export default function App() {
             <Route path="/provider-dashboard" element={<RequireAuth roles={["provider"]}><ProviderDashboard /></RequireAuth>} />
             <Route path="/admin-dashboard" element={<RequireAuth roles={["admin"]}><AdminDashboard /></RequireAuth>} />
             <Route path="/provider-dashboard/settings" element={<RequireAuth roles={["provider"]}><ProviderSettingsPage /></RequireAuth>} />
+            <Route path="/checkout/mock" element={<RequireAuth roles={["customer"]}><MockCheckoutPage /></RequireAuth>} />
+            <Route path="/checkout/return" element={<RequireAuth roles={["customer"]}><CheckoutReturnPage /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><AccountSettingsPage /></RequireAuth>} />
             <Route path="/messages" element={<RequireAuth><MessagesPage /></RequireAuth>} />
             <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />

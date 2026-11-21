@@ -4,6 +4,8 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from payments.serializers import BookingPaymentSerializer
+from payments.services import can_pay
 from providers.models import ProviderProfile
 from services.models import Service, ServiceCategory
 
@@ -34,6 +36,8 @@ class BookingSerializer(serializers.ModelSerializer):
     has_review = serializers.SerializerMethodField()
     can_review = serializers.SerializerMethodField()
     review = serializers.SerializerMethodField()
+    payment = serializers.SerializerMethodField()
+    can_pay = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -41,7 +45,8 @@ class BookingSerializer(serializers.ModelSerializer):
             "id", "customer", "customer_name", "provider", "provider_name", "service", "category_slug",
             "title", "description", "scheduled_date", "scheduled_time", "time_slot", "location",
             "contact_name", "contact_phone", "contact_email", "notes", "estimated_price", "final_price",
-            "status", "events", "photos", "has_review", "can_review", "review", "created_at", "updated_at",
+            "status", "events", "photos", "has_review", "can_review", "review", "payment", "can_pay",
+            "created_at", "updated_at",
         ]
         read_only_fields = fields
 
@@ -51,6 +56,14 @@ class BookingSerializer(serializers.ModelSerializer):
     def get_review(self, obj):
         r = getattr(obj, "review", None)
         return {"id": r.id, "rating": r.rating, "comment": r.comment} if r else None
+
+    def get_payment(self, obj):
+        p = getattr(obj, "payment", None)
+        return BookingPaymentSerializer(p).data if p else None
+
+    def get_can_pay(self, obj):
+        req = self.context.get("request")
+        return bool(req and can_pay(obj, req.user))
 
     def get_can_review(self, obj):
         req = self.context.get("request")

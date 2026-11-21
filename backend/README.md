@@ -54,6 +54,7 @@ npm run dev              # this repo's dev server runs on :3000 (both :3000 and 
 | Favorites | `GET/POST favorites/`, `DELETE favorites/{provider_id}/` |
 | Messaging | `GET/POST conversations/`, `GET conversations/{id}/`, `GET/POST conversations/{id}/messages/` (`?after=<id>` for polling) |
 | Notifications | `GET notifications/`, `PATCH notifications/{id}/read/`, `POST notifications/read-all/`, `DELETE notifications/` |
+| Payments | `GET payments/config/` (active gateway), `POST payments/checkout/` (`{booking}`, customer, COMPLETED only; returns `checkout_url`), `GET payments/session/{session_id}/`, `POST payments/sync/` (`{session_id}`, re-checks with Stripe), `POST payments/mock/confirm/` (mock gateway only), `POST payments/webhook/` (Stripe, signature-verified) |
 | Dashboards | `GET dashboard/customer/`, `GET dashboard/provider/`, `GET dashboard/admin/` (totals, bookings by status, 14-day trend, newest accounts), `GET dashboard/public/` (anonymous landing-page stats) |
 
 Errors are `{"detail": "...", "errors": {field: [..]}}`. Lists are paginated `{count, next, previous, results}`.
@@ -63,7 +64,22 @@ Errors are `{"detail": "...", "errors": {field: [..]}}`. Lists are paginated `{c
 endpoints above; prices are computed server-side. A provider can't hold two ACCEPTED/IN_PROGRESS bookings with
 overlapping slots: new requests for a committed slot are rejected, and so is accepting a clashing request. Reviews require a COMPLETED booking owned by the reviewer (one per booking).
 
-## 6. Authentication
+## 6. Payments
+Customers pay after a job is COMPLETED: the amount is the booking's `final_price`. Bookings include `payment`
+(`status`, `amount`, `paid_at`) and `can_pay`. One `Payment` row per booking; a failed or abandoned checkout is replaced
+by the next attempt, and a paid booking can't be charged again.
+
+* **Stripe:** set `STRIPE_SECRET_KEY` (and `PAYMENTS_CURRENCY`, default `usd`). Checkout redirects to Stripe-hosted
+  Checkout and back to `FRONTEND_URL/checkout/return`, which confirms with Stripe directly. Set `STRIPE_WEBHOOK_SECRET`
+  so `payments/webhook/` accepts `checkout.session.*` events; unsigned, stale or wrongly signed requests get 400. Locally:
+  `stripe listen --forward-to localhost:8000/api/payments/webhook/` prints the secret to use.
+* **Mock (development):** with no Stripe key and `PAYMENTS_MOCK` on (the default when `DEBUG=True`), checkout opens a
+  test page in the app. Card `4242 4242 4242 4242` succeeds, `4000 0000 0000 0002` is declined. With neither configured,
+  checkout returns 503 and the Pay button is hidden.
+
+Seed data marks past jobs as paid and leaves each customer's latest completed job unpaid, so the flow can be tried at once.
+
+## 7. Authentication
 Send `Authorization: Bearer <access>`. Access tokens last 30 min, refresh tokens 7 days (rotating). Passwords are hashed
 by Django. Roles: `CUSTOMER`, `PROVIDER`, `ADMIN` (admins are created via `createsuperuser`/admin only; register rejects `ADMIN`).
 
@@ -73,7 +89,7 @@ resetting a password revokes every refresh token for that user. Access tokens ar
 Password reset emails link to `FRONTEND_URL/reset-password?uid=…&token=…`. With no SMTP settings, the email is printed to
 the `runserver` console, so in development you copy the link from there.
 
-## 7. Testing
+## 8. Testing
 ```bash
 python manage.py test        # needs a reachable PostgreSQL where the DB user may CREATE DATABASE
 ```

@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "reviews.apps.ReviewsConfig",
     "favorites",
     "dashboard",
+    "payments",
 ]
 
 MIDDLEWARE = [
@@ -159,6 +160,14 @@ EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "FixMate <no-reply@fixmate.local>")
+
+# --- Payments ----------------------------------------------------------------
+# With STRIPE_SECRET_KEY set, customers pay through Stripe Checkout. Without it, a local mock
+# checkout is used when PAYMENTS_MOCK is on (default: same as DEBUG); otherwise payments are off.
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+PAYMENTS_CURRENCY = os.environ.get("PAYMENTS_CURRENCY", "usd").lower()
+PAYMENTS_MOCK = env_bool("PAYMENTS_MOCK", DEBUG)
 
 # --- CORS / CSRF -------------------------------------------------------------
 # The API uses Bearer tokens (not cookies), so CSRF only matters for /admin/.

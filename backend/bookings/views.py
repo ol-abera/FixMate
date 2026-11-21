@@ -36,7 +36,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retr
 
     def get_queryset(self):
         u = self.request.user
-        qs = Booking.objects.select_related("customer", "provider__user", "category", "service").prefetch_related("events", "photos")
+        qs = Booking.objects.select_related("customer", "provider__user", "category", "service", "payment").prefetch_related("events", "photos")
         if u.role == "ADMIN":
             pass
         elif u.role == "PROVIDER":

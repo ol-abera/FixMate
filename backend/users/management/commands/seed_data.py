@@ -8,7 +8,7 @@ generated and printed once. NEVER run against a production database.
 import math
 import os
 import secrets
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -21,6 +21,7 @@ from common.geo import city_center
 from favorites.models import Favorite
 from messaging.models import Conversation, Message
 from notifications.models import Notification, NotificationType
+from payments.models import Gateway, Payment, PaymentStatus
 from providers.models import ProviderProfile
 from reviews.models import Review
 from services.models import Service, ServiceCategory
@@ -254,6 +255,18 @@ class Command(BaseCommand):
             for s in path:
                 BookingEvent.objects.create(booking=b, status=s, label=labels[s])
             demo_bookings.append(b)
+
+        # ---- payments: history is settled; each customer's latest completed job is left to pay in the demo
+        latest_unpaid = set()
+        for b in Booking.objects.filter(status="COMPLETED").order_by("customer_id", "-scheduled_date", "-id"):
+            if b.customer_id in latest_unpaid:
+                Payment.objects.create(
+                    booking=b, customer_id=b.customer_id, amount=b.final_price, currency=settings.PAYMENTS_CURRENCY,
+                    gateway=Gateway.MOCK, session_id=f"seed_{b.id}", payment_intent=f"seed_pi_{b.id}",
+                    status=PaymentStatus.PAID, paid_at=timezone.make_aware(datetime.combine(b.scheduled_date, time(14))),
+                )
+            else:
+                latest_unpaid.add(b.customer_id)
 
         # ---- favourites
         for pn in ("Diego Santos", "Tariq Hassan"):
