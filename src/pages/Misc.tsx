@@ -17,7 +17,7 @@ import { toast } from "sonner";
 /* -------------------------------- Messages --------------------------------- */
 
 export function MessagesPage() {
-  const { conversations, sendMessage, user, loadConversation } = useApp();
+  const { conversations, sendMessage, user, loadConversation, subscribe, live } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [sp, setSp] = useSearchParams();
   const [activeId, setActiveId] = useState(sp.get("c") ?? conversations[0]?.id ?? "");
@@ -37,14 +37,15 @@ export function MessagesPage() {
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [active?.id, active?.messages.length]);
 
-  // load full thread (marks incoming as read) and poll for new messages while it is open
+  // load full thread (marks incoming as read); new messages arrive over the socket, with polling as fallback
   const activeConvId = active?.id;
   useEffect(() => {
     if (!activeConvId) return;
     loadConversation(activeConvId);
-    const t = window.setInterval(() => loadConversation(activeConvId), 5000);
-    return () => clearInterval(t);
-  }, [activeConvId, loadConversation]);
+    const off = subscribe((e) => { if (e.type === "message" && String(e.conversation_id) === activeConvId) loadConversation(activeConvId); });
+    const t = window.setInterval(() => loadConversation(activeConvId), live ? 30000 : 5000);
+    return () => { off(); clearInterval(t); };
+  }, [activeConvId, loadConversation, subscribe, live]);
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -63,7 +64,10 @@ export function MessagesPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-      <h1 className="mb-4 text-2xl font-extrabold tracking-tight text-slate-900">Messages</h1>
+      <div className="mb-4 flex items-center gap-3">
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Messages</h1>
+        {live && <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100" title="New messages appear instantly"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live</span>}
+      </div>
       <div className="grid h-[70vh] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid-cols-[300px_1fr]">
         {/* list */}
         <aside className={cn("flex flex-col border-r border-slate-100", mobileOpen && "hidden md:flex")}>
