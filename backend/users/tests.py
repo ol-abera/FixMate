@@ -97,3 +97,76 @@ class AuthTests(TestCase):
         evil = SimpleUploadedFile("x.exe", b"MZ", content_type="application/octet-stream")
         r = c.patch("/api/auth/me/", {"profile_image": evil}, format="multipart")
         self.assertEqual(r.status_code, 400)
+
+
+class SessionSecurityTests(TestCase):
+    NEW_PASSWORD = "Brand-new-pass!42"
+
+    def setUp(self):
+        self.api = APIClient()
+        self.user = make_user("sec@example.com")
+
+    def login(self, password=TEST_PASSWORD):
+        return self.api.post("/api/auth/login/", {"email": "sec@example.com", "password": password}, format="json")
+
+    def refresh(self, token):
+        return self.api.post("/api/auth/token/refresh/", {"refresh": token}, format="json")
+
+    def test_logout_blacklists_refresh_token(self):
+        refresh = self.login().data["refresh"]
+        self.assertEqual(self.api.post("/api/auth/logout/", {"refresh": refresh}, format="json").status_code, 204)
+        self.assertEqual(self.refresh(refresh).status_code, 401)
+        # idempotent / garbage tokens are fine
+        self.assertEqual(self.api.post("/api/auth/logout/", {"refresh": refresh}, format="json").status_code, 204)
+        self.assertEqual(self.api.post("/api/auth/logout/", {"refresh": "junk"}, format="json").status_code, 204)
+
+    def test_rotated_refresh_token_cannot_be_reused(self):
+        refresh = self.login().data["refresh"]
+        self.assertEqual(self.refresh(refresh).status_code, 200)
+        self.assertEqual(self.refresh(refresh).status_code, 401)
+
+    def test_change_password_requires_current_and_revokes_sessions(self):
+        old_refresh = self.login().data["refresh"]
+        c = client_for(self.user)
+        r = c.post("/api/auth/password/change/", {"current_password": "wrong", "new_password": self.NEW_PASSWORD}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("current_password", r.data["errors"])
+        r = c.post("/api/auth/password/change/", {"current_password": TEST_PASSWORD, "new_password": "password"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        r = c.post("/api/auth/password/change/", {"current_password": TEST_PASSWORD, "new_password": self.NEW_PASSWORD}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn("refresh", r.data)
+        self.assertEqual(self.refresh(old_refresh).status_code, 401)
+        self.assertEqual(self.refresh(r.data["refresh"]).status_code, 200)
+        self.assertEqual(self.login().status_code, 401)
+        self.assertEqual(self.login(self.NEW_PASSWORD).status_code, 200)
+
+    def test_change_password_requires_auth(self):
+        r = self.api.post("/api/auth/password/change/", {"current_password": TEST_PASSWORD, "new_password": self.NEW_PASSWORD}, format="json")
+        self.assertEqual(r.status_code, 401)
+
+    def test_password_reset_flow(self):
+        import re
+
+        from django.core import mail
+
+        r = self.api.post("/api/auth/password/reset/", {"email": "nobody@example.com"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+        r = self.api.post("/api/auth/password/reset/", {"email": "SEC@example.com"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        m = re.search(r"uid=([\w-]+)&token=([\w-]+)", mail.outbox[0].body)
+        uid, token = m.groups()
+        self.assertIn("http://localhost:3000/reset-password?", mail.outbox[0].body)
+
+        bad = self.api.post("/api/auth/password/reset/confirm/", {"uid": uid, "token": "x-y", "new_password": self.NEW_PASSWORD}, format="json")
+        self.assertEqual(bad.status_code, 400)
+        old_refresh = self.login().data["refresh"]
+        ok = self.api.post("/api/auth/password/reset/confirm/", {"uid": uid, "token": token, "new_password": self.NEW_PASSWORD}, format="json")
+        self.assertEqual(ok.status_code, 200, ok.data)
+        self.assertEqual(self.login(self.NEW_PASSWORD).status_code, 200)
+        self.assertEqual(self.refresh(old_refresh).status_code, 401)
+        # the token is single-use: the password hash changed
+        again = self.api.post("/api/auth/password/reset/confirm/", {"uid": uid, "token": token, "new_password": "Another-pass!77"}, format="json")
+        self.assertEqual(again.status_code, 400)
