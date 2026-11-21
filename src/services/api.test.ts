@@ -122,3 +122,18 @@ describe("request", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ refresh: "r-123" });
   });
 });
+
+describe("same-origin deployments", () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules(); });
+
+  it("accepts a relative API URL such as /api behind a reverse proxy", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_API_URL", "/api");
+    const fetchMock = vi.fn().mockResolvedValue(json(200, []));
+    vi.stubGlobal("fetch", fetchMock);
+    const mod = await import("./api");
+    await mod.api.categories();
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`${window.location.origin}/api/categories/`);
+    expect(mod.DJANGO_ADMIN_URL).toBe("/admin/");
+  });
+});
