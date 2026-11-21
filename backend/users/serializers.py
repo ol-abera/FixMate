@@ -136,7 +136,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         from django.utils.encoding import force_str
         from django.utils.http import urlsafe_base64_decode
 
-        invalid = serializers.ValidationError({"token": "This reset link is invalid or has expired."})
+        invalid = serializers.ValidationError({"detail": "This reset link is invalid or has expired. Request a new one."})
         try:
             user = User.objects.get(pk=force_str(urlsafe_base64_decode(attrs["uid"])), is_active=True)
         except (User.DoesNotExist, ValueError, TypeError, OverflowError):
