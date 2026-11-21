@@ -7,7 +7,29 @@ from their dashboard; admins verify providers.
 | Part | Stack | Location |
 |---|---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, framer-motion, Phosphor icons | `src/` |
-| Backend | Django 5.2, Django REST Framework, SimpleJWT, PostgreSQL | `backend/` |
+| Backend | Django 5.2, Django REST Framework, SimpleJWT, Django Channels, PostgreSQL, Redis (optional) | `backend/` |
+
+## Run everything with Docker
+
+Prerequisites: Docker with Compose v2.
+
+```bash
+cp .env.example .env     # set SECRET_KEY and DATABASE_PASSWORD (see the docker compose section at the bottom)
+docker compose up --build
+```
+
+Open http://localhost:8080. Compose starts PostgreSQL, Redis, the Django API on Daphne (HTTP + WebSockets) and nginx,
+which serves the built React app and proxies `/api`, `/ws/`, `/admin` and `/media` to the backend, so the browser
+only ever talks to one origin. The backend runs migrations and `collectstatic` on start; uploads and the database
+live in named volumes (`media`, `pgdata`).
+
+* **Demo data:** add `SEED_DEMO=1` and `SEED_PASSWORD=…` to `.env` to load the seed accounts (throwaway demos only).
+  Add `PAYMENTS_MOCK=True` to try checkout without Stripe.
+* **Admin user:** `docker compose exec backend python manage.py createsuperuser`, then sign in at `/admin/`.
+* **Production:** put TLS in front of the `web` service, set `APP_URL=https://your.domain`,
+  `ALLOWED_HOSTS=your.domain`, `SECURE_SSL_REDIRECT=True`, real SMTP settings and Stripe keys.
+  Health check: `GET /api/health/`.
+* **Reset:** `docker compose down -v` deletes the containers and the volumes.
 
 ## Quick start (local)
 

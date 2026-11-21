@@ -64,3 +64,26 @@ jobs:
       - name: Fail if models changed without a migration
         run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test --parallel 1
+
+  docker:
+    name: Docker (build images, boot the stack, smoke test)
+    runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: ci-only-secret-key-not-used-anywhere-else-0123456789
+      DATABASE_PASSWORD: fixmate-ci
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build
+      - run: docker compose up -d --wait --wait-timeout 180
+      - name: Smoke test through nginx
+        run: |
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:8080/explore | grep -q '<div id="root">'
+          curl -fsS http://localhost:8080/api/health/ | grep -q '"status":"ok"'
+          curl -fsS http://localhost:8080/api/categories/ > /dev/null
+          curl -fsS -o /dev/null http://localhost:8080/admin/login/
+          curl -fsS -o /dev/null http://localhost:8080/static/admin/css/base.css
+      - if: failure()
+        run: docker compose logs --no-color
+      - if: always()
+        run: docker compose down -v

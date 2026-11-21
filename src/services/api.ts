@@ -72,7 +72,7 @@ export async function refreshAccess(): Promise<boolean> {
 }
 
 export async function request<T = unknown>(path: string, opts: ReqOpts = {}, retried = false): Promise<T> {
-  const url = new URL(`${API_URL}${path}`);
+  const url = new URL(`${API_URL}${path}`, window.location.origin);
   Object.entries(opts.query ?? {}).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v)); });
   const headers: Record<string, string> = {};
   if (opts.auth !== false && tokens.access) headers.Authorization = `Bearer ${tokens.access}`;

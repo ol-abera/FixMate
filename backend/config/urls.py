@@ -4,9 +4,11 @@ from django.contrib import admin
 from django.urls import include, path
 
 from common import admin_site  # noqa: F401  (customises the admin index with platform stats)
+from common.views import HealthView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/health/", HealthView.as_view(), name="health"),
     path("api/auth/", include("users.auth_urls")),
     path("api/users/", include("users.urls")),
     path("api/categories/", include("services.category_urls")),
