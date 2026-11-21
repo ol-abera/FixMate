@@ -26,6 +26,7 @@ class BookingSerializer(serializers.ModelSerializer):
     events = BookingEventSerializer(many=True, read_only=True)
     has_review = serializers.SerializerMethodField()
     can_review = serializers.SerializerMethodField()
+    review = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -33,12 +34,16 @@ class BookingSerializer(serializers.ModelSerializer):
             "id", "customer", "customer_name", "provider", "provider_name", "service", "category_slug",
             "title", "description", "scheduled_date", "scheduled_time", "time_slot", "location",
             "contact_name", "contact_phone", "contact_email", "estimated_price", "final_price",
-            "status", "events", "has_review", "can_review", "created_at", "updated_at",
+            "status", "events", "has_review", "can_review", "review", "created_at", "updated_at",
         ]
         read_only_fields = fields
 
     def get_has_review(self, obj):
         return hasattr(obj, "review")
+
+    def get_review(self, obj):
+        r = getattr(obj, "review", None)
+        return {"id": r.id, "rating": r.rating, "comment": r.comment} if r else None
 
     def get_can_review(self, obj):
         req = self.context.get("request")

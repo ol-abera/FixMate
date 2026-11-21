@@ -61,3 +61,23 @@ class DashboardTests(TestCase):
     def test_provider_without_profile_gets_404(self):
         lonely = make_user("lone@example.com", role="PROVIDER")
         self.assertEqual(client_for(lonely).get("/api/dashboard/provider/").status_code, 404)
+
+
+class PublicStatsTests(TestCase):
+    def test_public_stats_use_real_data_and_hide_unverified(self):
+        cat = make_category("Plumbing")
+        cu = make_user("c@example.com", first_name="Cara")
+        _, p = make_provider("p@example.com", category=cat, location="Austin")
+        make_provider("q@example.com", location="Round Rock")
+        make_provider("hidden@example.com", verified=False, location="Secret City")
+        done = make_booking(cu, p, status="COMPLETED")
+        Review.objects.create(customer=cu, provider=p, booking=done, rating=5, comment="Great work")
+        r = client_for().get("/api/dashboard/public/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["verified_providers"], 2)
+        self.assertEqual(r.data["jobs_completed"], 1)
+        self.assertEqual(r.data["avg_rating"], 5.0)
+        self.assertEqual(r.data["cities"], ["Austin", "Round Rock"])
+        self.assertEqual(len(r.data["featured_reviews"]), 1)
+        self.assertEqual(r.data["featured_reviews"][0]["comment"], "Great work")
+        self.assertEqual(r.data["featured_reviews"][0]["provider_city"], "Austin")

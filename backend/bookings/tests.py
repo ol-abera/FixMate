@@ -111,3 +111,16 @@ class BookingTests(TestCase):
         b = make_booking(self.cu, self.p, status="IN_PROGRESS")
         r = client_for(self.cu).post(f"/api/bookings/{b.id}/complete/", {"final_price": "1"}, format="json")
         self.assertEqual(r.status_code, 400)
+
+
+class BookingReviewFieldTests(TestCase):
+    def test_booking_exposes_own_review(self):
+        from reviews.models import Review
+        cu = make_user("rc@example.com")
+        _, p = make_provider("rp@example.com")
+        b = make_booking(cu, p, status="COMPLETED")
+        r = client_for(cu).get(f"/api/bookings/{b.id}/")
+        self.assertIsNone(r.data["review"])
+        rv = Review.objects.create(customer=cu, provider=p, booking=b, rating=4, comment="Good")
+        r = client_for(cu).get(f"/api/bookings/{b.id}/")
+        self.assertEqual(r.data["review"], {"id": rv.id, "rating": 4, "comment": "Good"})
