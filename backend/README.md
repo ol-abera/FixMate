@@ -26,7 +26,6 @@ Generate a key: `python -c "from django.core.management.utils import get_random_
 
 ## 3. Migrations, seed data, run
 ```bash
-python manage.py makemigrations users services providers bookings reviews favorites messaging notifications
 python manage.py migrate
 python manage.py seed_data            # DEBUG=True only; prints a random password once (or use --password / SEED_PASSWORD)
 python manage.py runserver            # http://localhost:8000
@@ -34,8 +33,6 @@ python manage.py runserver            # http://localhost:8000
 Seeded logins (shared password printed by the command): `admin@fixmate.test`, `sarah.jenkins@fixmate.test`
 (customer), `alex.rivera@fixmate.test` (provider), `kofi.mensah@fixmate.test` (provider awaiting verification).
 Admin site: http://localhost:8000/admin/ (create your own superuser with `createsuperuser` if you prefer).
-
-> Migration files are not committed: run `makemigrations` once (commit the generated files afterwards).
 
 ## 4. Frontend
 ```bash
