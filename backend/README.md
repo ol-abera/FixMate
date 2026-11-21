@@ -79,7 +79,24 @@ by the next attempt, and a paid booking can't be charged again.
 
 Seed data marks past jobs as paid and leaves each customer's latest completed job unpaid, so the flow can be tried at once.
 
-## 7. Authentication
+## 7. Realtime (WebSockets)
+`runserver` serves ASGI (Daphne), so `ws://localhost:8000/ws/` works in development with no extra process. In production
+run `daphne -b 0.0.0.0 -p 8000 config.asgi:application` (or uvicorn) and set `REDIS_URL` so every backend process shares
+one channel layer; without it an in-memory layer is used, which only reaches sockets in the same process.
+
+* The client connects to `/ws/` and sends `{"type": "auth", "token": "<access token>"}` as its first message (tokens are
+  kept out of URLs and logs). The server answers `{"type": "ready"}`, or closes with code `4001` for a missing,
+  invalid or expired token; it also closes with `4001` when the token expires mid-session, and the client refreshes and
+  reconnects. Unauthenticated sockets are closed after 10 s; `{"type": "ping"}` gets `{"type": "pong"}`.
+* The `Origin` header must match `CORS_ALLOWED_ORIGINS` or `ALLOWED_HOSTS`.
+* Events, sent only after the database transaction commits:
+  `{"type": "notification", "notification": {...}}` (same shape as `GET notifications/`),
+  `{"type": "message", "conversation_id", "message_id", "sender_id"}` and `{"type": "booking", "booking_id", "status"}`.
+  Messages and bookings are signals; the client re-fetches over REST so viewer-specific fields stay correct.
+* Realtime is best-effort: if the channel layer is down, requests still succeed and the frontend keeps polling
+  (every 15 s, or 60 s while the socket is live).
+
+## 8. Authentication
 Send `Authorization: Bearer <access>`. Access tokens last 30 min, refresh tokens 7 days (rotating). Passwords are hashed
 by Django. Roles: `CUSTOMER`, `PROVIDER`, `ADMIN` (admins are created via `createsuperuser`/admin only; register rejects `ADMIN`).
 
@@ -89,12 +106,11 @@ resetting a password revokes every refresh token for that user. Access tokens ar
 Password reset emails link to `FRONTEND_URL/reset-password?uid=…&token=…`. With no SMTP settings, the email is printed to
 the `runserver` console, so in development you copy the link from there.
 
-## 8. Testing
+## 9. Testing
 ```bash
 python manage.py test        # needs a reachable PostgreSQL where the DB user may CREATE DATABASE
 ```
 
 ## Notes
-* Real-time: messaging is REST + polling today; `messaging/services.py` holds the send/mark-read logic so a Django Channels consumer can reuse it.
 * Reminders: schedule `python manage.py send_reminders` daily (cron) for "upcoming booking" notifications.
 * Uploads go to `MEDIA_ROOT` (default `backend/media/`, git-ignored); images only (JPG/PNG/WEBP, ≤5 MB, content-verified). Serve media via your web server in production.

@@ -113,10 +113,10 @@ export function MessagesPage() {
                 ))}
               </div>
               <form onSubmit={send} className="flex items-center gap-2 border-t border-slate-100 p-3">
-                <button type="button" onClick={() => fileRef.current?.click()} className="grid h-10 w-10 place-items-center rounded-full text-slate-400 hover:bg-slate-100"><Paperclip size={18} /></button>
+                <button type="button" onClick={() => fileRef.current?.click()} aria-label="Attach image" className="grid h-10 w-10 place-items-center rounded-full text-slate-400 hover:bg-slate-100"><Paperclip size={18} /></button>
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onFile} />
                 <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Message ${active.providerName.split(" ")[0]}...`} className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200" />
-                <button type="submit" className="grid h-10 w-10 place-items-center rounded-full bg-emerald-600 text-white transition hover:bg-emerald-700 active:scale-95"><PaperPlaneRight size={18} weight="fill" /></button>
+                <button type="submit" aria-label="Send message" className="grid h-10 w-10 place-items-center rounded-full bg-emerald-600 text-white transition hover:bg-emerald-700 active:scale-95"><PaperPlaneRight size={18} weight="fill" /></button>
               </form>
             </>
           )}
