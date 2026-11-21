@@ -46,7 +46,12 @@ Seeded logins (all share the password you passed to `seed_data`):
 | `npm run build` | Type-check and build to `dist/` |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript only |
+| `npm test` | Frontend unit and component tests (Vitest + Testing Library, jsdom) |
+| `npm run test:watch` | Vitest in watch mode |
 | `cd backend && python manage.py test` | Backend test suite (needs PostgreSQL with `CREATEDB`) |
+
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, frontend tests and the production build, plus the Django
+tests against PostgreSQL 16 and a check that no model change is missing a migration, on every pull request.
 
 ## Project layout
 
