@@ -7,6 +7,7 @@ import {
   Info, Lightning, X,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
+import { slotsOverlap } from "../lib/slots";
 import { useApp, useProviderById } from "../context/AppContext";
 import { api, errorMessage } from "../services/api";
 import { toast } from "sonner";
@@ -29,15 +30,6 @@ function nextDates(n: number) {
 const SLOTS = ["08:00 - 10:00", "10:00 - 12:00", "12:00 - 14:00", "14:00 - 16:00", "16:00 - 18:00"];
 const MAX_PHOTOS = 6;
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-
-function slotRange(slot: string): [number, number] | null {
-  const m = /^(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})$/.exec(slot.trim());
-  return m ? [Number(m[1]) * 60 + Number(m[2]), Number(m[3]) * 60 + Number(m[4])] : null;
-}
-function slotsOverlap(a: string, b: string) {
-  const x = slotRange(a), y = slotRange(b);
-  return !!x && !!y && x[0] < y[1] && y[0] < x[1];
-}
 
 export function BookingWizardPage() {
   const { providerId } = useParams();
