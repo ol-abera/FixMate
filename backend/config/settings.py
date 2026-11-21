@@ -28,6 +28,7 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 INSTALLED_APPS = [
+    "daphne",  # makes `runserver` serve ASGI (HTTP + WebSockets)
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -37,6 +38,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "channels",
     "common",
     "users",
     "providers",
@@ -48,6 +50,7 @@ INSTALLED_APPS = [
     "favorites",
     "dashboard",
     "payments",
+    "realtime",
 ]
 
 MIDDLEWARE = [
@@ -169,11 +172,23 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 PAYMENTS_CURRENCY = os.environ.get("PAYMENTS_CURRENCY", "usd").lower()
 PAYMENTS_MOCK = env_bool("PAYMENTS_MOCK", DEBUG)
 
+# --- Realtime (WebSockets) ---------------------------------------------------------------
+# REDIS_URL is required when running more than one backend process; the in-memory layer only reaches
+# sockets in the same process.
+ASGI_APPLICATION = "config.asgi.application"
+REDIS_URL = os.environ.get("REDIS_URL", "")
+CHANNEL_LAYERS = {
+    "default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": [REDIS_URL]}}
+    if REDIS_URL else {"BACKEND": "channels.layers.InMemoryChannelLayer"}
+}
+
 # --- CORS / CSRF -------------------------------------------------------------
 # The API uses Bearer tokens (not cookies), so CSRF only matters for /admin/.
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")
 CORS_ALLOW_ALL_ORIGINS = False
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "http://localhost:3000,http://localhost:5173")
+# Browsers send Origin on WebSocket handshakes; accept the frontend origins plus same-host connections.
+WEBSOCKET_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS + ALLOWED_HOSTS
 
 # --- Production hardening ----------------------------------------------------
 if not DEBUG:

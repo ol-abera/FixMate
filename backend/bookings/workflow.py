@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from notifications.models import NotificationType
 from notifications.services import notify
+from realtime.events import push
 
 from .models import Booking, BookingEvent, BookingStatus as S
 from .scheduling import provider_conflict
@@ -68,6 +69,7 @@ def transition(booking, user, action, final_price=None):
         "complete": "Completed", "cancel": f"Cancelled by {role}",
     }
     BookingEvent.objects.create(booking=booking, status=target, label=labels[action], actor=user)
+    push([booking.customer_id, booking.provider.user_id], {"type": "booking", "booking_id": booking.id, "status": target})
     _notify(booking, action, role)
     return booking
 
