@@ -8,6 +8,7 @@ from notifications.models import NotificationType
 from notifications.services import notify
 
 from .models import Booking, BookingEvent, BookingStatus as S
+from .scheduling import provider_conflict
 
 # action -> (target status, allowed from-statuses, allowed actor roles)
 ACTIONS = {
@@ -39,6 +40,13 @@ def transition(booking, user, action, final_price=None):
         raise PermissionDenied(f"A {role} cannot {action} a booking.")
     if booking.status not in allowed_from:
         raise ValidationError({"detail": f"Cannot {action} a booking that is {booking.status}."})
+    if action == "accept":
+        from providers.models import ProviderProfile
+
+        ProviderProfile.objects.select_for_update().get(pk=booking.provider_id)
+        clash = provider_conflict(booking.provider_id, booking.scheduled_date, booking.time_slot, exclude_id=booking.id)
+        if clash:
+            raise ValidationError({"detail": f"You already have a job booked at that time (booking #{clash.id})."})
 
     if final_price is not None:
         if role != "provider" or action != "complete":

@@ -14,3 +14,8 @@ export function notificationLink(n: NotificationItem, user: AuthUser | null): st
   if (n.type === "system" && user?.role === "provider") return "/provider-dashboard";
   return "/notifications";
 }
+
+/** Only same-origin app paths are allowed as post-login redirects. */
+export function safeNext(next: string | null) {
+  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
+}

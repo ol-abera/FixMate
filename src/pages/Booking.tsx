@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, ArrowRight, CheckCircle, Clock, MapPin, Phone,
-  User as UserIcon, Camera, Paperclip, CurrencyDollar, ShieldCheck, Check,
-  Info, Lightning,
+  User as UserIcon, Paperclip, CurrencyDollar, ShieldCheck, Check,
+  Info, Lightning, X,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
+import { slotsOverlap } from "../lib/slots";
 import { useApp, useProviderById } from "../context/AppContext";
-import { errorMessage } from "../services/api";
+import { api, errorMessage } from "../services/api";
 import { toast } from "sonner";
 
 const STEPS = ["Service", "Schedule", "Contact", "Address", "Photos", "Review"];
@@ -27,6 +28,8 @@ function nextDates(n: number) {
   return out;
 }
 const SLOTS = ["08:00 - 10:00", "10:00 - 12:00", "12:00 - 14:00", "14:00 - 16:00", "16:00 - 18:00"];
+const MAX_PHOTOS = 6;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
 export function BookingWizardPage() {
   const { providerId } = useParams();
@@ -51,8 +54,15 @@ export function BookingWizardPage() {
     street: "",
     city: provider?.city ?? "",
     notes: "",
-    photos: [] as string[],
   });
+  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([]);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<{ date: string; time_slot: string }[]>([]);
+
+  useEffect(() => () => photos.forEach((p) => URL.revokeObjectURL(p.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (provider?.id) api.busySlots(provider.id).then(setBusy).catch(() => setBusy([]));
+  }, [provider?.id]);
 
   const services = useMemo(() => (provider?.services ?? []).filter((s) => s.active), [provider?.services]);
   useEffect(() => {
@@ -96,6 +106,19 @@ export function BookingWizardPage() {
   }
 
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
+  const isBusy = (date: string, slot: string) => busy.some((b) => b.date === date && slotsOverlap(b.time_slot, slot));
+  const addPhotos = (files: FileList | null) => {
+    const picked = Array.from(files ?? []);
+    const ok = picked.filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type) && f.size <= MAX_PHOTO_BYTES);
+    if (ok.length < picked.length) toast.error("Photos must be JPG, PNG or WEBP and under 5 MB");
+    const room = MAX_PHOTOS - photos.length;
+    if (ok.length > room) toast.info(`You can attach up to ${MAX_PHOTOS} photos`);
+    setPhotos((p) => [...p, ...ok.slice(0, Math.max(room, 0)).map((file) => ({ file, url: URL.createObjectURL(file) }))]);
+  };
+  const removePhoto = (i: number) => setPhotos((p) => {
+    URL.revokeObjectURL(p[i].url);
+    return p.filter((_, j) => j !== i);
+  });
   const chosen = services.find((s) => s.id === form.serviceId);
   // mirrors the server-side estimate in bookings/serializers.py
   const estimate = chosen ? chosen.price : Math.max(provider.hourlyRate * 2, provider.minJobPrice);
@@ -109,7 +132,7 @@ export function BookingWizardPage() {
   };
   const canNext = [
     !!form.serviceName && !!form.description,
-    !!form.date && !!form.timeSlot,
+    !!form.date && !!form.timeSlot && !isBusy(form.date, form.timeSlot),
     !!form.name && !!form.phone && /.+@.+\..+/.test(form.email),
     !!form.street && !!form.city,
     true,
@@ -131,6 +154,8 @@ export function BookingWizardPage() {
         contactName: form.name,
         contactPhone: form.phone,
         contactEmail: form.email,
+        notes: form.notes.trim(),
+        photos: photos.map((p) => p.file),
       });
       toast.success("Booking request sent!", { description: `${provider.name} will confirm shortly.` });
       navigate("/customer-dashboard");
@@ -212,11 +237,17 @@ export function BookingWizardPage() {
                 </div>
                 <p className="text-sm text-slate-500">Pick a time slot</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {SLOTS.map((s) => (
-                    <button key={s} onClick={() => set("timeSlot", s)} className={cn("flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition", form.timeSlot === s ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-slate-200 text-slate-600 hover:border-emerald-300")}>
-                      <Clock size={14} /> {s}
-                    </button>
-                  ))}
+                  {SLOTS.map((s) => {
+                    const taken = isBusy(form.date, s);
+                    return (
+                      <button key={s} disabled={taken} onClick={() => set("timeSlot", s)} title={taken ? `${provider.name} is already booked then` : undefined}
+                        className={cn("flex items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-medium transition",
+                          taken ? "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300 line-through"
+                            : form.timeSlot === s ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-slate-200 text-slate-600 hover:border-emerald-300")}>
+                        <Clock size={14} /> {s}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -259,17 +290,22 @@ export function BookingWizardPage() {
               <div className="space-y-4">
                 <h2 className="font-bold text-slate-900">Add photos (optional)</h2>
                 <p className="text-sm text-slate-500">Sharing a few photos helps pros give a sharper estimate.</p>
+                <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden"
+                  onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
                 <div className="grid grid-cols-3 gap-3">
-                  {form.photos.map((p, i) => (
-                    <div key={i} className="relative overflow-hidden rounded-xl border border-slate-200">
-                      <img src={p} alt="" className="h-24 w-full object-cover" />
-                      <button onClick={() => set("photos", form.photos.filter((_, j) => j !== i))} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-slate-500 shadow"><Camera size={13} weight="fill" /></button>
+                  {photos.map((p, i) => (
+                    <div key={p.url} className="relative overflow-hidden rounded-xl border border-slate-200">
+                      <img src={p.url} alt={`Job photo ${i + 1}`} className="h-24 w-full object-cover" />
+                      <button onClick={() => removePhoto(i)} aria-label={`Remove photo ${i + 1}`} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-slate-500 shadow hover:text-rose-600"><X size={13} weight="bold" /></button>
                     </div>
                   ))}
-                  <button onClick={() => set("photos", [...form.photos, `https://picsum.photos/seed/job${form.photos.length}/300/200`])} className="grid h-24 place-items-center rounded-xl border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-emerald-400 hover:text-emerald-500">
-                    <div className="text-center"><Paperclip size={20} /><span className="mt-1 block text-xs font-medium">Add photo</span></div>
-                  </button>
+                  {photos.length < MAX_PHOTOS && (
+                    <button onClick={() => photoInput.current?.click()} className="grid h-24 place-items-center rounded-xl border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-emerald-400 hover:text-emerald-500">
+                      <div className="text-center"><Paperclip size={20} /><span className="mt-1 block text-xs font-medium">Add photo</span></div>
+                    </button>
+                  )}
                 </div>
+                <p className="text-xs text-slate-400">Up to {MAX_PHOTOS} photos · JPG, PNG or WEBP · 5 MB each</p>
               </div>
             )}
             {step === 5 && (
@@ -282,7 +318,8 @@ export function BookingWizardPage() {
                     ["Date", `${form.date} · ${form.timeSlot}`],
                     ["Address", `${form.street}, ${form.city}`],
                     ["Contact", `${form.name} · ${form.phone}`],
-                    ["Photos", `${form.photos.length} attached`],
+                    ["Notes", form.notes.trim()],
+                    ["Photos", `${photos.length} attached`],
                   ].map(([l, v]) => (
                     <div key={l as string} className="flex justify-between border-b border-slate-200/70 py-1.5 last:border-0">
                       <span className="text-slate-500">{l}</span><span className="font-medium text-slate-800">{v || "—"}</span>

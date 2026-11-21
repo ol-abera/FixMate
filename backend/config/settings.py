@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "common",
     "users",
@@ -136,6 +137,7 @@ REST_FRAMEWORK = {
         "user": "100000/hour" if TESTING else "5000/hour",
         "login": "100000/min" if TESTING else "10/min",
         "register": "100000/hour" if TESTING else "20/hour",
+        "password_reset": "100000/hour" if TESTING else "5/hour",
     },
 }
 
@@ -143,8 +145,20 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.environ.get("ACCESS_TOKEN_MINUTES", 30))),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.environ.get("REFRESH_TOKEN_DAYS", 7))),
     "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# --- Email -------------------------------------------------------------------
+# Password reset links point at the React app. Without SMTP settings, emails are printed to the console.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "FixMate <no-reply@fixmate.local>")
 
 # --- CORS / CSRF -------------------------------------------------------------
 # The API uses Bearer tokens (not cookies), so CSRF only matters for /admin/.

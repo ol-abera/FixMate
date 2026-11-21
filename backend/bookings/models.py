@@ -1,6 +1,10 @@
 from django.conf import settings
 from django.db import models
 
+from common.validators import validate_image_file
+
+MAX_BOOKING_PHOTOS = 6
+
 
 class BookingStatus(models.TextChoices):
     PENDING = "PENDING", "Pending"
@@ -25,6 +29,7 @@ class Booking(models.Model):
     contact_name = models.CharField(max_length=120, blank=True)
     contact_phone = models.CharField(max_length=30, blank=True)
     contact_email = models.EmailField(blank=True)
+    notes = models.TextField(blank=True, help_text="Access notes: gate codes, parking, pets...")
     estimated_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     final_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=12, choices=BookingStatus.choices, default=BookingStatus.PENDING, db_index=True)
@@ -56,6 +61,17 @@ class BookingEvent(models.Model):
     status = models.CharField(max_length=12, choices=BookingStatus.choices)
     label = models.CharField(max_length=140)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class BookingPhoto(models.Model):
+    """Photos the customer attaches so the provider can see the job before arriving."""
+
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="photos")
+    image = models.ImageField(upload_to="booking_photos/", validators=[validate_image_file])
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

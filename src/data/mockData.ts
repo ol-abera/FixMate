@@ -115,6 +115,8 @@ export interface BookingRequest {
   customerId?: number;
   serviceId?: string;
   review?: { id: string; rating: number; comment: string } | null;
+  notes?: string;
+  photos?: { id: string; url: string }[];
 }
 
 export interface Message {
