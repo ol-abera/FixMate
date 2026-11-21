@@ -248,6 +248,9 @@ function UserMenu() {
               {user?.role === "provider" && (
                 <button onClick={() => go("/provider-dashboard")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><CurrencyDollar size={16} /> Provider dashboard</button>
               )}
+              {user?.role === "admin" && (
+                <button onClick={() => go("/admin-dashboard")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><ShieldCheck size={16} /> Admin console</button>
+              )}
               <button onClick={() => go("/messages")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><ChatCircle size={16} /> Messages</button>
               {user?.role === "customer" && (
                 <button onClick={() => go("/favorites")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Heart size={16} /> Favorites ({favorites.length})</button>

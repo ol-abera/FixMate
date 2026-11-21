@@ -47,14 +47,14 @@ npm run dev              # this repo's dev server runs on :3000 (both :3000 and 
 |---|---|
 | Auth | `POST auth/register/`, `POST auth/login/`, `POST auth/token/refresh/`, `POST auth/logout/` (blacklists the refresh token), `GET/PATCH auth/me/`, `POST auth/password/change/`, `POST auth/password/reset/`, `POST auth/password/reset/confirm/` |
 | Categories | `GET categories/` (with provider_count, avg_price) |
-| Providers | `GET providers/` (verified only; `search, category, location, min_price, max_price, min_rate, max_rate, rating, available_now, instant_book, ordering, page, page_size`), `GET providers/{id}/`, `POST providers/`, `GET/PATCH providers/me/`, `PATCH providers/{id}/` (owner), `POST providers/me/portfolio/`, `DELETE providers/me/portfolio/{id}/`, `POST providers/{id}/verify|reject/` (admin), `GET providers/{id}/reviews/` |
+| Providers | `GET providers/` (verified only; `search, category, location, min_price, max_price, min_rate, max_rate, rating, available_now, instant_book, ordering, page, page_size`), `GET providers/{id}/`, `POST providers/`, `GET/PATCH providers/me/`, `PATCH providers/{id}/` (owner), `POST providers/me/portfolio/`, `DELETE providers/me/portfolio/{id}/`, `POST providers/{id}/verify|reject/` (admin; reject takes an optional `reason`), `GET providers/{id}/reviews/` |
 | Services | `GET/POST services/` (`?mine=1` for the signed-in provider, incl. hidden), `GET/PATCH/DELETE services/{id}/` (owner provider only) |
 | Bookings | `GET/POST bookings/`, `GET bookings/{id}/`, `POST bookings/{id}/accept|decline|start|complete|cancel/`, `POST bookings/{id}/photos/` (customer, multipart `image`, max 6), `DELETE bookings/{id}/photos/{photo_id}/`, `GET bookings/busy/?provider=<id>` (committed slots, next 30 days) |
-| Reviews | `GET/POST reviews/`, `PATCH/DELETE reviews/{id}/` (author) |
+| Reviews | `GET/POST reviews/`, `PATCH/DELETE reviews/{id}/` (author), `GET reviews/moderation/` (admin; `state=hidden|published`, `max_rating`), `POST reviews/{id}/hide|publish/` (admin) |
 | Favorites | `GET/POST favorites/`, `DELETE favorites/{provider_id}/` |
 | Messaging | `GET/POST conversations/`, `GET conversations/{id}/`, `GET/POST conversations/{id}/messages/` (`?after=<id>` for polling) |
 | Notifications | `GET notifications/`, `PATCH notifications/{id}/read/`, `POST notifications/read-all/`, `DELETE notifications/` |
-| Dashboards | `GET dashboard/customer/`, `GET dashboard/provider/`, `GET dashboard/admin/`, `GET dashboard/public/` (anonymous landing-page stats) |
+| Dashboards | `GET dashboard/customer/`, `GET dashboard/provider/`, `GET dashboard/admin/` (totals, bookings by status, 14-day trend, newest accounts), `GET dashboard/public/` (anonymous landing-page stats) |
 
 Errors are `{"detail": "...", "errors": {field: [..]}}`. Lists are paginated `{count, next, previous, results}`.
 

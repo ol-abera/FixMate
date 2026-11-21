@@ -384,4 +384,34 @@ export const api = {
 
   // dashboards
   providerDashboard() { return request<any>("/dashboard/provider/"); },
+
+  // admin console
+  adminDashboard() { return request<AdminStats>("/dashboard/admin/"); },
+  async pendingProviders(): Promise<Provider[]> {
+    const d = await request<Page<any>>("/providers/", { query: { include_unverified: 1, status: "PENDING", page_size: 50, ordering: "created_at" } });
+    return d.results.map(toProvider);
+  },
+  verifyProvider(id: string) { return request(`/providers/${id}/verify/`, { method: "POST" }); },
+  rejectProvider(id: string, reason: string) { return request(`/providers/${id}/reject/`, { method: "POST", body: { reason } }); },
+  async moderationReviews(filter: "all" | "low" | "hidden"): Promise<ModerationReview[]> {
+    const query = { page_size: 30, ...(filter === "low" ? { max_rating: 2 } : filter === "hidden" ? { state: "hidden" } : {}) };
+    const d = await request<Page<any>>("/reviews/moderation/", { query });
+    return d.results.map((r) => ({ ...toReview(r), providerId: String(r.provider), providerName: r.provider_name, published: r.is_published }));
+  },
+  setReviewPublished(id: string, published: boolean) {
+    return request(`/reviews/${id}/${published ? "publish" : "hide"}/`, { method: "POST" });
+  },
 };
+
+export interface AdminStats {
+  users: number; customers: number; providers: number; pending_providers: number; bookings: number;
+  completed_bookings: number; gmv: string | number; reviews: number; avg_rating: string | number;
+  bookings_by_status: Record<string, number>;
+  daily: { day: string; bookings: number; completed_value: string | number }[];
+  recent_signups: { id: number; name: string; email: string; role: string; created_at: string }[];
+}
+
+export type ModerationReview = Review & { providerId: string; providerName: string; published: boolean };
+
+/** Django admin lives next to the API (same host, /admin/). */
+export const DJANGO_ADMIN_URL = API_URL.replace(/\/api\/?$/, "") + "/admin/";
