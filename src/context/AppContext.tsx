@@ -2,7 +2,8 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { api, errorMessage, tokens } from "../services/api";
+import { api, errorMessage, tokens, toNotification } from "../services/api";
+import { connectRealtime, type RealtimeEvent } from "../services/realtime";
 import {
   CATEGORIES, CITIES,
   type AuthUser, type BookingRequest, type BookingStatus, type Conversation, type NotificationItem, type Provider,
@@ -81,6 +82,10 @@ interface AppContextValue extends State {
   markAllRead: () => void;
   markRead: (id: string) => void;
   clearNotifications: () => void;
+  /** True while the WebSocket is connected and authenticated; polling slows down while live. */
+  live: boolean;
+  /** Listen to raw realtime events (e.g. the open chat thread). Returns an unsubscribe function. */
+  subscribe: (fn: (e: RealtimeEvent) => void) => () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -170,16 +175,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("fixmate:logout", h);
   }, []);
 
-  // lightweight polling (real-time via WebSockets can replace this later)
+  /* ------------------------------- realtime -------------------------------- */
+  const [live, setLive] = useState(false);
+  const listeners = useRef(new Set<(e: RealtimeEvent) => void>());
+  const subscribe = useCallback((fn: (e: RealtimeEvent) => void) => {
+    listeners.current.add(fn);
+    return () => { listeners.current.delete(fn); };
+  }, []);
+
+  const userId = state.user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    const stop = connectRealtime({
+      onStatus: setLive,
+      onEvent: (e) => {
+        if (e.type === "notification") {
+          const n = toNotification(e.notification);
+          patch((s) => ({ notifications: [n, ...s.notifications.filter((x) => x.id !== n.id)] }));
+          const chatting = n.type === "message" && window.location.pathname.startsWith("/messages");
+          if (!chatting) toast(n.title, { description: n.body || undefined });
+          if (n.bookingId) refreshBookings();
+        } else if (e.type === "message") {
+          refreshConversations();
+          if (String(e.sender_id) !== String(ref.current.user?.id)) refreshNotifications();
+        } else if (e.type === "booking") {
+          refreshBookings();
+        }
+        listeners.current.forEach((fn) => fn(e));
+      },
+    });
+    return () => { stop(); setLive(false); };
+  }, [userId, patch, refreshBookings, refreshConversations, refreshNotifications]);
+
+  // Polling is the fallback when the socket is down, and a slow safety net while it is up.
   useEffect(() => {
     if (!state.user) return;
     const t = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       refreshNotifications();
       refreshConversations();
-    }, 15000);
+    }, live ? 60000 : 15000);
     return () => clearInterval(t);
-  }, [state.user, refreshNotifications, refreshConversations]);
+  }, [state.user, live, refreshNotifications, refreshConversations]);
 
   /* --------------------------------- auth ---------------------------------- */
   const login = useCallback(async (email: string, password: string) => {
@@ -336,7 +373,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...state, ready, unreadCount, categories, stats, cities, getCategory, setUser, login, register, logout, toggleFavorite, addBooking,
     updateBookingStatus, submitReview, updateReview, deleteReview, refreshBookings, loadConversation,
     refreshConversations, sendMessage, startConversation, startConversationWithCustomer,
-    markAllRead, markRead, clearNotifications,
+    markAllRead, markRead, clearNotifications, live, subscribe,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

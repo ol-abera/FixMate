@@ -54,7 +54,7 @@ type Query = Record<string, string | number | boolean | undefined | null>;
 interface ReqOpts { method?: string; body?: unknown; query?: Query; form?: FormData; auth?: boolean }
 
 let refreshing: Promise<boolean> | null = null;
-async function refreshAccess(): Promise<boolean> {
+export async function refreshAccess(): Promise<boolean> {
   const refresh = tokens.refresh;
   if (!refresh) return false;
   refreshing ??= (async () => {

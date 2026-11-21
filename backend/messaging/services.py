@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from notifications.models import Notification, NotificationType
 from notifications.services import notify
+from realtime.events import push
 
 from .models import Conversation, Message
 
@@ -39,6 +40,9 @@ def send_message(conversation, sender, text="", attachment=None):
         raise ValidationError(e.message_dict if hasattr(e, "message_dict") else e.messages)
     msg.save()
     Conversation.objects.filter(pk=conversation.pk).update(last_message_at=msg.created_at)
+    # A signal, not the message: is_mine and attachment URLs depend on the viewer, so clients re-fetch.
+    push(conversation.participants.values_list("id", flat=True),
+         {"type": "message", "conversation_id": conversation.id, "message_id": msg.id, "sender_id": sender.id})
     recipient = conversation.participants.exclude(pk=sender.pk).first()
     if recipient:
         preview = text[:140] or "Sent an attachment"
