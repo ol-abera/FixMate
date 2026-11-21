@@ -8,6 +8,7 @@ import {
   Info, Lightning,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
+import { notificationLink } from "../lib/links";
 import { useApp } from "../context/AppContext";
 import { getCategory, type BookingStatus, type Provider } from "../data/mockData";
 import { toast } from "sonner";
@@ -161,7 +162,7 @@ export function ProviderCard({ provider }: { provider: Provider }) {
 /* --------------------------------- Navbar ---------------------------------- */
 
 function NotificationsMenu() {
-  const { notifications, unreadCount, markAllRead, markRead } = useApp();
+  const { notifications, unreadCount, markAllRead, markRead, user } = useApp();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const items = notifications.slice(0, 5);
@@ -194,7 +195,7 @@ function NotificationsMenu() {
                 items.map((n) => (
                   <button
                     key={n.id}
-                    onClick={() => { markRead(n.id); setOpen(false); navigate("/notifications"); }}
+                    onClick={() => { markRead(n.id); setOpen(false); navigate(notificationLink(n, user)); }}
                     className={cn("flex w-full gap-3 border-b border-slate-50 px-4 py-3 text-left transition hover:bg-slate-50", !n.read && "bg-emerald-50/40")}
                   >
                     <span className={cn("mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full",
@@ -248,8 +249,12 @@ function UserMenu() {
                 <button onClick={() => go("/provider-dashboard")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><CurrencyDollar size={16} /> Provider dashboard</button>
               )}
               <button onClick={() => go("/messages")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><ChatCircle size={16} /> Messages</button>
-              <button onClick={() => go("/explore")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Heart size={16} /> Favorites ({favorites.length})</button>
-              <button onClick={() => { logout(); setOpen(false); navigate("/"); toast.info("Signed out"); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50"><SignOut size={16} /> Sign out</button>
+              {user?.role === "customer" && (
+                <button onClick={() => go("/favorites")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Heart size={16} /> Favorites ({favorites.length})</button>
+              )}
+              {user && <button onClick={() => go("/notifications")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Bell size={16} /> Notifications</button>}
+              {!user && <button onClick={() => go("/auth")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><UserIcon size={16} /> Sign in</button>}
+              {user && <button onClick={() => { logout(); setOpen(false); navigate("/"); toast.info("Signed out"); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50"><SignOut size={16} /> Sign out</button>}
             </div>
           </div>
         </>
@@ -322,7 +327,7 @@ export function Navbar() {
                   {l.label}
                 </Link>
               ))}
-              <Link to="/messages" onClick={() => setMobile(false)} className="block rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Messages</Link>
+              {user && <Link to="/messages" onClick={() => setMobile(false)} className="block rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Messages</Link>}
               {!user && <Link to="/auth" onClick={() => setMobile(false)} className="mt-2 block rounded-lg bg-emerald-600 px-3 py-2.5 text-center text-sm font-semibold text-white">Sign in</Link>}
             </div>
           </motion.div>
@@ -336,10 +341,10 @@ export function Navbar() {
 
 export function Footer() {
   const cols = [
-    { title: "Company", links: ["About", "Careers", "Press", "Blog"] },
-    { title: "For customers", links: ["Explore pros", "How it works", "Pricing", "Trust & safety"] },
-    { title: "For pros", links: ["Become a provider", "Pro dashboard", "Resources", "Success stories"] },
-    { title: "Support", links: ["Help center", "Contact", "Terms", "Privacy"] },
+    { title: "Company", links: [["About", "/about"], ["How it works", "/#how-it-works"]] },
+    { title: "For customers", links: [["Explore pros", "/explore"], ["Favorites", "/favorites"], ["Trust & safety", "/help#trust"]] },
+    { title: "For pros", links: [["Become a provider", "/become-provider"], ["Pro dashboard", "/provider-dashboard"]] },
+    { title: "Support", links: [["Help center", "/help"], ["Contact", "/help#contact"]] },
   ];
   return (
     <footer className="mt-20 border-t border-slate-200 bg-slate-50">
@@ -356,8 +361,8 @@ export function Footer() {
             <div key={c.title}>
               <p className="text-sm font-semibold text-slate-900">{c.title}</p>
               <ul className="mt-3 space-y-2">
-                {c.links.map((l) => (
-                  <li key={l}><a href="#" onClick={(e) => e.preventDefault()} className="text-sm text-slate-500 transition hover:text-emerald-600">{l}</a></li>
+                {c.links.map(([l, to]) => (
+                  <li key={l}><Link to={to} className="text-sm text-slate-500 transition hover:text-emerald-600">{l}</Link></li>
                 ))}
               </ul>
             </div>

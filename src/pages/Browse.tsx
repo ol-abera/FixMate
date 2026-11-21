@@ -142,7 +142,7 @@ export function HomePage() {
       </section>
 
       {/* How it works */}
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
+      <section id="how-it-works" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-14 sm:px-6">
         <SectionHeading center eyebrow="Simple" title="Get it fixed in three steps" />
         <div className="mt-10 grid gap-6 md:grid-cols-3">
           {HOW_IT_WORKS.map((h, i) => {
@@ -204,14 +204,13 @@ const SORTS = [
 
 export function ExplorePage() {
   const [sp] = useSearchParams();
-  const { favorites, toggleFavorite } = useApp();
   const [query, setQuery] = useState(sp.get("q") ?? "");
   const [category, setCategory] = useState(sp.get("category") ?? "");
   const [city, setCity] = useState(sp.get("city") ?? "");
   const [maxPrice, setMaxPrice] = useState(150);
   const [minRating, setMinRating] = useState(0);
   const [availableNow, setAvailableNow] = useState(false);
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [instantOnly, setInstantOnly] = useState(false);
   const [sort, setSort] = useState("recommended");
   const [showFilters, setShowFilters] = useState(false);
 
@@ -223,7 +222,7 @@ export function ExplorePage() {
   }, [query]);
 
   const ordering = sort === "rating" ? "-rating" : sort === "price_low" ? "hourly_rate" : "-rating,-total_reviews";
-  const key = JSON.stringify([debouncedQuery, category, city, maxPrice, minRating, availableNow, ordering]);
+  const key = JSON.stringify([debouncedQuery, category, city, maxPrice, minRating, availableNow, instantOnly, ordering]);
   const [pageState, setPageState] = useState({ key, page: 1 });
   const page = pageState.key === key ? pageState.page : 1;
   const [results, setResults] = useState<Provider[]>([]);
@@ -236,7 +235,7 @@ export function ExplorePage() {
     api.providers({
       search: debouncedQuery, category, location: city,
       max_rate: maxPrice < 150 ? maxPrice : undefined,
-      rating: minRating || undefined, available_now: availableNow || undefined,
+      rating: minRating || undefined, available_now: availableNow || undefined, instant_book: instantOnly || undefined,
       ordering, page, page_size: 12,
     })
       .then((d) => {
@@ -249,7 +248,7 @@ export function ExplorePage() {
     return () => { live = false; };
   }, [key, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const reset = () => { setQuery(""); setCategory(""); setCity(""); setMaxPrice(150); setMinRating(0); setAvailableNow(false); setVerifiedOnly(false); };
+  const reset = () => { setQuery(""); setCategory(""); setCity(""); setMaxPrice(150); setMinRating(0); setAvailableNow(false); setInstantOnly(false); };
 
   const FilterPanel = (
     <div className="space-y-6">
@@ -285,7 +284,7 @@ export function ExplorePage() {
       </div>
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={availableNow} onChange={(e) => setAvailableNow(e.target.checked)} className="h-4 w-4 accent-emerald-600" /> Available now</label>
-        <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} className="h-4 w-4 accent-emerald-600" /> Verified pros only</label>
+        <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={instantOnly} onChange={(e) => setInstantOnly(e.target.checked)} className="h-4 w-4 accent-emerald-600" /> Instant booking only</label>
       </div>
       <button onClick={reset} className="w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Reset filters</button>
     </div>
@@ -328,12 +327,7 @@ export function ExplorePage() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {results.map((p) => (
-                <div key={p.id} className="relative">
-                  <ProviderCard provider={p} />
-                  <button onClick={() => toggleFavorite(p.id)} className="sr-only">{favorites.includes(p.id) ? "Unfavorite" : "Favorite"}</button>
-                </div>
-              ))}
+              {results.map((p) => <ProviderCard key={p.id} provider={p} />)}
             </div>
           )}
           {results.length < total && (
@@ -376,7 +370,7 @@ export function ProviderProfilePage() {
   const cat = getCategory(provider.categoryIds[0]);
   const openChat = async () => {
     try {
-      const cid = await startConversation(provider);
+      const cid = await startConversation(provider.id);
       navigate(`/messages?c=${cid}`);
     } catch (e) {
       toast.error(errorMessage(e));

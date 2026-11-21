@@ -65,7 +65,7 @@ class ProviderTests(TestCase):
         _, a = make_provider("a@example.com", category=self.cat, profession="Plumber", location="Austin",
                              hourly_rate=40, starting_price=50, rating=4.9, skills="leaks,pipes")
         _, b = make_provider("b@example.com", category=elec, profession="Computer fixer", location="Round Rock",
-                             hourly_rate=120, starting_price=150, rating=4.2, skills="laptops")
+                             hourly_rate=120, starting_price=150, rating=4.2, skills="laptops", instant_book=True)
         _, c_ = make_provider("c@example.com", category=elec, profession="Phone tech", location="Austin",
                               hourly_rate=80, starting_price=90, rating=4.6, availability="BUSY")
         make_provider("hidden@example.com", verified=False, category=elec, profession="Computer hidden")
@@ -80,6 +80,7 @@ class ProviderTests(TestCase):
         self.assertEqual(ids("?max_rate=50"), [a.id])
         self.assertEqual(ids("?rating=4.5"), sorted([a.id, c_.id]))
         self.assertEqual(ids("?available_now=true"), sorted([a.id, b.id]))
+        self.assertEqual(ids("?instant_book=true"), [b.id])
         r = api.get("/api/providers/?ordering=-rating")
         self.assertEqual([x["id"] for x in r.data["results"]], [a.id, c_.id, b.id])
         r = api.get("/api/providers/?ordering=hourly_rate&page_size=2")

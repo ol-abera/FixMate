@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
@@ -13,6 +13,8 @@ import { api, errorMessage } from "../services/api";
 import { getCategory } from "../data/mockData";
 import { Avatar, ProviderCard, RatingStars, StatusBadge, SectionHeading, EmptyState } from "../components/Layout";
 import { toast } from "sonner";
+
+const ACTIVE_STATUSES = ["pending", "accepted", "in_progress"];
 
 interface ProviderDash {
   stats: { rating: string | number; total_reviews: number };
@@ -72,11 +74,16 @@ function StatCard({ icon: Icon, label, value, trend, accent }: { icon: typeof Ho
 /* --------------------------- Customer dashboard ---------------------------- */
 
 export function CustomerDashboard() {
-  const { bookings, user, favorites, providers, ready } = useApp();
+  const { bookings, user, favorites, providers, ready, startConversation } = useApp();
+  const navigate = useNavigate();
   const [reviewing, setReviewing] = useState<string | null>(null);
   if (ready && (!user || user.role !== "customer")) return <Navigate to="/auth" replace />;
   const mine = bookings; // already scoped to the signed-in customer by the API
   const favProviders = providers.filter((p) => favorites.includes(p.id));
+  const completedJobs = mine.filter((b) => b.status === "completed");
+  const openChat = async (providerId: string) => {
+    try { navigate(`/messages?c=${await startConversation(providerId)}`); } catch (e) { toast.error(errorMessage(e)); }
+  };
   const recommended = providers.filter((p) => !favorites.includes(p.id)).sort((a, b) => b.rating - a.rating).slice(0, 3);
 
   return (
@@ -90,9 +97,9 @@ export function CustomerDashboard() {
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Calendar} label="Active bookings" value={String(mine.filter((b) => b.status !== "completed" && b.status !== "declined").length)} />
-        <StatCard icon={CheckCircle} label="Completed" value={String(mine.filter((b) => b.status === "completed").length)} accent="bg-sky-50 text-sky-600" />
-        <StatCard icon={Star} label="Avg. spend" value={`$${Math.round((mine.reduce((s, b) => s + b.estimate, 0) / (mine.length || 1)))}`} accent="bg-amber-50 text-amber-600" />
+        <StatCard icon={Calendar} label="Active bookings" value={String(mine.filter((b) => ACTIVE_STATUSES.includes(b.status)).length)} />
+        <StatCard icon={CheckCircle} label="Completed" value={String(completedJobs.length)} accent="bg-sky-50 text-sky-600" />
+        <StatCard icon={Star} label="Avg. spend" value={`$${Math.round(completedJobs.reduce((s, b) => s + b.estimate, 0) / (completedJobs.length || 1))}`} accent="bg-amber-50 text-amber-600" />
         <StatCard icon={Users} label="Saved pros" value={String(favorites.length)} accent="bg-rose-50 text-rose-600" />
       </div>
 
@@ -103,7 +110,7 @@ export function CustomerDashboard() {
             {mine.length === 0 ? (
               <EmptyState icon={Calendar} title="No bookings yet" hint="Find a pro and book your first job." action={<Link to="/explore" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Explore pros</Link>} />
             ) : mine.map((b) => (
-              <div key={b.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div key={b.id} id={`booking-${b.id}`} className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><Wrench size={20} /></span>
@@ -134,7 +141,7 @@ export function CustomerDashboard() {
                 </div>
                 <div className="mt-4 flex gap-2">
                   <Link to={`/providers/${b.providerId}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">View pro</Link>
-                  <Link to="/messages" className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><ChatCircle size={14} /> Message</Link>
+                  <button onClick={() => openChat(b.providerId)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><ChatCircle size={14} /> Message</button>
                   {b.status === "completed" && b.canReview && <button onClick={() => setReviewing(b.id)} className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Leave review</button>}
                   {b.status === "completed" && b.hasReview && <span className="ml-auto text-xs font-medium text-emerald-600">Reviewed</span>}
                 </div>
@@ -146,8 +153,8 @@ export function CustomerDashboard() {
         <aside className="space-y-6">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
-              <p className="font-bold text-slate-900">Saved pros</p>
-              <Link to="/explore" className="text-xs font-semibold text-emerald-700">Browse</Link>
+              <p id="favorites" className="font-bold text-slate-900">Saved pros</p>
+              <Link to="/favorites" className="text-xs font-semibold text-emerald-700">View all</Link>
             </div>
             <div className="mt-3 space-y-3">
               {favProviders.length === 0 ? <p className="text-sm text-slate-400">No favorites yet.</p> : favProviders.map((p) => (
@@ -172,6 +179,26 @@ export function CustomerDashboard() {
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recommended.map((p) => <ProviderCard key={p.id} provider={p} />)}</div>
       </div>
       {reviewing && <ReviewDialog id={reviewing} onClose={() => setReviewing(null)} />}
+    </div>
+  );
+}
+
+/* -------------------------------- Favorites -------------------------------- */
+
+export function FavoritesPage() {
+  const { user, ready, favorites, providers } = useApp();
+  if (ready && (!user || user.role !== "customer")) return <Navigate to="/auth" replace />;
+  const saved = providers.filter((p) => favorites.includes(p.id));
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      <SectionHeading title="Saved pros" subtitle="Pros you have favorited, ready to book again." />
+      <div className="mt-6">
+        {saved.length === 0 ? (
+          <EmptyState icon={Star} title="No favorites yet" hint="Tap the heart on any pro to save them here." action={<Link to="/explore" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Explore pros</Link>} />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{saved.map((p) => <ProviderCard key={p.id} provider={p} />)}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -226,7 +253,7 @@ export function ProviderDashboard() {
             </div>
             <div className="mt-4 space-y-3">
               {pending.length === 0 ? <EmptyState icon={CheckCircle} title="No pending requests" hint="New booking requests will appear here." /> : pending.map((b) => (
-                <div key={b.id} className="rounded-xl border border-slate-200 p-4">
+                <div key={b.id} id={`booking-${b.id}`} className="scroll-mt-24 rounded-xl border border-slate-200 p-4 transition">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-slate-900">{b.serviceName}</p>
@@ -248,7 +275,7 @@ export function ProviderDashboard() {
             <p className="font-bold text-slate-900">Active jobs</p>
             <div className="mt-4 space-y-3">
               {active.length === 0 ? <p className="text-sm text-slate-400">No active jobs right now.</p> : active.map((b) => (
-                <div key={b.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-4">
+                <div key={b.id} id={`booking-${b.id}`} className="flex scroll-mt-24 items-center justify-between rounded-xl border border-slate-200 p-4 transition">
                   <div><p className="font-semibold text-slate-900">{b.serviceName}</p><p className="text-sm text-slate-500">{b.customerName} · {b.address}</p></div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={b.status} />

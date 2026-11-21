@@ -52,6 +52,8 @@ def filter_providers(qs, params):
 
     if params.get("available_now") in ("1", "true", "True"):
         qs = qs.filter(availability="AVAILABLE")
+    if params.get("instant_book") in ("1", "true", "True"):
+        qs = qs.filter(instant_book=True)
     return qs.distinct()
 
 

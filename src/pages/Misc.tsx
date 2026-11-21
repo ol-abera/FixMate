@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ChatCircle, PaperPlaneRight, Paperclip, MagnifyingGlass, Bell, CheckCircle,
-  X, Trash, UserPlus, ShieldCheck, SealCheck, ArrowRight, Info, Phone,
+  X, Trash, UserPlus, ShieldCheck, SealCheck, ArrowRight, Info,
   Envelope, MapPin, Wrench, Users, IdentificationCard, Building, Star,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
@@ -11,22 +11,31 @@ import { useApp } from "../context/AppContext";
 import { errorMessage } from "../services/api";
 import { CATEGORIES, CITIES } from "../data/mockData";
 import { Avatar, EmptyState, SectionHeading } from "../components/Layout";
+import { notificationLink } from "../lib/links";
 import { toast } from "sonner";
 
 /* -------------------------------- Messages --------------------------------- */
 
 export function MessagesPage() {
-  const { conversations, sendMessage, user, loadConversation } = useApp();
+  const { conversations, sendMessage, user, ready, loadConversation } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [sp, setSp] = useSearchParams();
   const [activeId, setActiveId] = useState(sp.get("c") ?? conversations[0]?.id ?? "");
   const [text, setText] = useState("");
   const [mobileOpen, setMobileOpen] = useState(Boolean(sp.get("c")));
-  const endRef = useRef<HTMLDivElement>(null);
+  const [search, setSearch] = useState("");
+  const threadRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
+  const visible = conversations.filter((c) => c.providerName.toLowerCase().includes(search.trim().toLowerCase()));
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [active?.messages.length]);
+  useEffect(() => { const c = sp.get("c"); if (c) setActiveId(c); }, [sp]);
+
+  // scroll only the thread panel, never the whole window
+  useEffect(() => {
+    const el = threadRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [active?.id, active?.messages.length]);
 
   // load full thread (marks incoming as read) and poll for new messages while it is open
   const activeConvId = active?.id;
@@ -45,6 +54,8 @@ export function MessagesPage() {
 
   const open = (id: string) => { setActiveId(id); setSp({ c: id }); setMobileOpen(true); };
 
+  if (ready && !user) return <Navigate to="/auth" replace />;
+
   const send = (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim() || !active) return;
@@ -61,14 +72,16 @@ export function MessagesPage() {
           <div className="border-b border-slate-100 p-3">
             <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3">
               <MagnifyingGlass size={16} className="text-slate-400" />
-              <input placeholder="Search chats" className="w-full bg-transparent py-2 text-sm outline-none" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats" className="w-full bg-transparent py-2 text-sm outline-none" />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {conversations.map((c) => (
+            {visible.length === 0 && <p className="px-4 py-8 text-center text-sm text-slate-400">{conversations.length ? "No chats match your search." : "No conversations yet."}</p>}
+            {visible.map((c) => (
               <button key={c.id} onClick={() => open(c.id)} className={cn("flex w-full items-center gap-3 border-b border-slate-50 px-3 py-3 text-left transition hover:bg-slate-50", active?.id === c.id && "bg-emerald-50/60")}>
                 <div className="relative"><Avatar src={c.avatar} alt={c.providerName} size={44} />{c.online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />}</div>
                 <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-900">{c.providerName}</p><p className="truncate text-xs text-slate-500">{c.lastMessage}</p></div>
+                {!!c.unread && active?.id !== c.id && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-emerald-600 px-1.5 text-[10px] font-bold text-white">{c.unread}</span>}
               </button>
             ))}
           </div>
@@ -84,9 +97,9 @@ export function MessagesPage() {
                 <button onClick={() => setMobileOpen(false)} className="grid h-8 w-8 place-items-center rounded-full text-slate-500 hover:bg-slate-100 md:hidden"><X size={18} /></button>
                 <Avatar src={active.avatar} alt={active.providerName} size={40} />
                 <div className="flex-1"><p className="text-sm font-bold text-slate-900">{active.providerName}</p><p className="text-xs text-emerald-600">{active.online ? "Online" : "Offline"}</p></div>
-                <button onClick={() => toast.info("Calling is disabled in this demo")} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><Phone size={18} /></button>
+                {active.providerId && <Link to={`/providers/${active.providerId}`} aria-label="View profile" className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><IdentificationCard size={18} /></Link>}
               </div>
-              <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
+              <div ref={threadRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 p-4">
                 {active.messages.map((m) => (
                   <div key={m.id} className={cn("flex", m.sender === "me" ? "justify-end" : "justify-start")}>
                     <div className={cn("max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm", m.sender === "me" ? "rounded-br-md bg-emerald-600 text-white" : "rounded-bl-md bg-white text-slate-700")}>
@@ -96,7 +109,6 @@ export function MessagesPage() {
                     </div>
                   </div>
                 ))}
-                <div ref={endRef} />
               </div>
               <form onSubmit={send} className="flex items-center gap-2 border-t border-slate-100 p-3">
                 <button type="button" onClick={() => fileRef.current?.click()} className="grid h-10 w-10 place-items-center rounded-full text-slate-400 hover:bg-slate-100"><Paperclip size={18} /></button>
@@ -122,8 +134,10 @@ const NOTIF_STYLE = {
 };
 
 export function NotificationsPage() {
-  const { notifications, markAllRead, markRead, clearNotifications } = useApp();
+  const { notifications, markAllRead, markRead, clearNotifications, user, ready } = useApp();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "unread">("all");
+  if (ready && !user) return <Navigate to="/auth" replace />;
   const list = filter === "unread" ? notifications.filter((n) => !n.read) : notifications;
 
   return (
@@ -143,7 +157,7 @@ export function NotificationsPage() {
         ) : list.map((n) => {
           const Icon = NOTIF_ICON[n.type];
           return (
-            <button key={n.id} onClick={() => markRead(n.id)} className={cn("flex w-full items-start gap-3 rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:shadow", n.read ? "border-slate-200" : "border-emerald-200 bg-emerald-50/40")}>
+            <button key={n.id} onClick={() => { markRead(n.id); const to = notificationLink(n, user); if (to !== "/notifications") navigate(to); }} className={cn("flex w-full items-start gap-3 rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:shadow", n.read ? "border-slate-200" : "border-emerald-200 bg-emerald-50/40")}>
               <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full", NOTIF_STYLE[n.type])}><Icon size={18} /></span>
               <span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="font-semibold text-slate-900">{n.title}</span>{!n.read && <span className="h-2 w-2 rounded-full bg-emerald-500" />}</span><span className="mt-0.5 block text-sm text-slate-500">{n.body}</span><span className="mt-1 block text-xs text-slate-400">{n.time}</span></span>
             </button>
@@ -344,6 +358,52 @@ export function BecomeProviderPage() {
         <div className="flex items-center gap-2 rounded-xl bg-emerald-50/60 p-3 text-sm text-emerald-800"><Building size={18} /> We verify every pro with ID and background checks before going live.</div>
         <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 active:scale-95">Create my pro profile <ArrowRight size={16} /></button>
       </form>
+    </div>
+  );
+}
+
+/* ---------------------------------- Help ----------------------------------- */
+
+const FAQ = [
+  { q: "How does booking work?", a: "Pick a pro, describe the job, choose a date and time slot, and confirm. The pro accepts or declines your request; you can follow every step from your dashboard." },
+  { q: "When can I cancel?", a: "You can cancel a booking while it is pending or accepted. Once a job is in progress it can only be completed." },
+  { q: "How are prices calculated?", a: "Estimates are calculated by FixMate from the pro's rates or the service you picked. The pro confirms the final price when the job is completed." },
+  { q: "Who can leave reviews?", a: "Only customers with a completed booking can review that booking, once. This keeps ratings honest." },
+  { q: "How do I become a pro?", a: "Create a pro profile from the Become a Pro page. Our team reviews every profile before it appears in search." },
+];
+
+export function HelpPage() {
+  const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL as string | undefined;
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+      <SectionHeading center eyebrow="Help center" title="How can we help?" subtitle="Answers to the most common questions about booking and working with FixMate pros." />
+      <div className="mt-8 space-y-3">
+        {FAQ.map((f) => (
+          <details key={f.q} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <summary className="cursor-pointer list-none font-semibold text-slate-900">{f.q}</summary>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">{f.a}</p>
+          </details>
+        ))}
+      </div>
+
+      <div id="trust" className="mt-10 scroll-mt-24 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900"><ShieldCheck size={22} className="text-emerald-600" /> Trust & safety</h2>
+        <ul className="mt-3 space-y-2 text-sm text-slate-700">
+          {["Every pro is reviewed by the FixMate team before appearing in search.", "Reviews come only from customers with a completed booking.", "Messages and bookings stay inside FixMate, so there is always a record."].map((t) => (
+            <li key={t} className="flex items-start gap-2"><CheckCircle size={16} className="mt-0.5 shrink-0 text-emerald-600" /> {t}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div id="contact" className="mt-6 scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <Envelope size={26} className="mx-auto text-emerald-600" />
+        <h2 className="mt-2 text-lg font-bold text-slate-900">Still need help?</h2>
+        {supportEmail ? (
+          <a href={`mailto:${supportEmail}`} className="mt-3 inline-flex rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">Email {supportEmail}</a>
+        ) : (
+          <p className="mt-1 text-sm text-slate-500">For a question about a job, message your pro directly from your dashboard.</p>
+        )}
+      </div>
     </div>
   );
 }
