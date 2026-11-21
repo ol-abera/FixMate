@@ -1,6 +1,7 @@
 from django.db.models import Count, Q
 from rest_framework import serializers
 
+from common.geo import city_center
 from common.utils import abs_url
 from services.models import ServiceCategory
 from services.serializers import ServiceSerializer
@@ -38,6 +39,8 @@ class ProviderListSerializer(serializers.ModelSerializer):
     verified = serializers.BooleanField(source="is_verified", read_only=True)
     available_now = serializers.SerializerMethodField()
     jobs_completed = serializers.SerializerMethodField()
+    distance_km = serializers.SerializerMethodField()
+    has_location = serializers.SerializerMethodField()
 
     class Meta:
         model = ProviderProfile
@@ -45,8 +48,15 @@ class ProviderListSerializer(serializers.ModelSerializer):
             "id", "user_id", "name", "title", "avatar", "cover", "categories", "city", "bio", "skills",
             "rating", "total_reviews", "hourly_rate", "starting_price", "verification_status", "verified",
             "instant_book", "available_now", "availability", "years_of_experience", "jobs_completed",
-            "response_time_mins",
+            "response_time_mins", "distance_km", "has_location",
         ]
+
+    def get_distance_km(self, obj):
+        d = getattr(obj, "distance_km", None)
+        return round(d, 1) if d is not None else None
+
+    def get_has_location(self, obj):
+        return obj.latitude is not None
 
     def get_avatar(self, obj):
         return abs_url(self.context.get("request"), obj.user.profile_image)
@@ -84,11 +94,19 @@ class ProviderDetailSerializer(ProviderListSerializer):
     services = serializers.SerializerMethodField()
     reviews = serializers.SerializerMethodField()
     favorites_count = serializers.SerializerMethodField()
+    pin = serializers.SerializerMethodField()
 
     class Meta(ProviderListSerializer.Meta):
         fields = ProviderListSerializer.Meta.fields + [
-            "gallery", "portfolio", "services", "reviews", "favorites_count", "created_at",
+            "gallery", "portfolio", "services", "reviews", "favorites_count", "created_at", "pin",
         ]
+
+    def get_pin(self, obj):
+        """Exact coordinates are private to the provider; everyone else only sees distances."""
+        req = self.context.get("request")
+        if obj.latitude is None or not req or req.user.id != obj.user_id:
+            return None
+        return {"lat": float(obj.latitude), "lng": float(obj.longitude), "is_city_center": city_center(obj.location) == (float(obj.latitude), float(obj.longitude))}
 
     def get_gallery(self, obj):
         req = self.context.get("request")
@@ -124,13 +142,35 @@ class ProviderWriteSerializer(serializers.ModelSerializer):
         fields = [
             "profession", "description", "location", "years_of_experience", "hourly_rate",
             "starting_price", "availability", "instant_book", "response_time_mins", "skills",
-            "categories", "cover_image",
+            "categories", "cover_image", "latitude", "longitude",
         ]
+        extra_kwargs = {
+            "latitude": {"min_value": -90, "max_value": 90},
+            "longitude": {"min_value": -180, "max_value": 180},
+        }
 
     def validate_hourly_rate(self, v):
         if v < 0:
             raise serializers.ValidationError("Must be >= 0.")
         return v
+
+    def validate(self, attrs):
+        if ("latitude" in attrs) != ("longitude" in attrs):
+            raise serializers.ValidationError({"latitude": "Send latitude and longitude together."})
+        if (attrs.get("latitude") is None) != (attrs.get("longitude") is None):
+            raise serializers.ValidationError({"latitude": "Send both coordinates, or clear both."})
+        return attrs
+
+    def save(self, **kwargs):
+        # No exact pin => use the city's centre when we know it. That covers a city change without new
+        # coordinates and an explicit {"latitude": null, "longitude": null} ("drop my pin").
+        data = self.validated_data
+        city = data.get("location", self.instance.location if self.instance else "")
+        city_changed = "location" in data and (self.instance is None or data["location"] != self.instance.location)
+        dropping_pin = "latitude" in data and data["latitude"] is None
+        if dropping_pin or (city_changed and "latitude" not in data):
+            data["latitude"], data["longitude"] = city_center(city) or (None, None)
+        return super().save(**kwargs)
 
 
 class PortfolioImageSerializer(serializers.ModelSerializer):

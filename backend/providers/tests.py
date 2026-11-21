@@ -98,3 +98,60 @@ class ProviderTests(TestCase):
         self.assertEqual(r.data["favorites_count"], 0)
         self.assertEqual(r.data["portfolio"], [])
         self.assertEqual(r.data["gallery"], [])
+
+
+class GeoSearchTests(TestCase):
+    # Austin downtown, ~3 km north, and Round Rock (~27 km).
+    ORIGIN = (30.2672, -97.7431)
+
+    def setUp(self):
+        _, self.near = make_provider("near@example.com", latitude=30.2672, longitude=-97.7431)
+        _, self.mid = make_provider("mid@example.com", latitude=30.2942, longitude=-97.7431)
+        self.far_user, self.far = make_provider("far@example.com", location="Round Rock", latitude=30.5083, longitude=-97.6789)
+        _, self.nowhere = make_provider("nowhere@example.com", location="Smallville")
+
+    def get(self, **params):
+        return client_for().get("/api/providers/", params)
+
+    def test_sorted_by_distance_with_unlocated_pros_last(self):
+        r = self.get(lat=self.ORIGIN[0], lng=self.ORIGIN[1])
+        self.assertEqual(r.status_code, 200, r.data)
+        ids = [p["id"] for p in r.data["results"]]
+        self.assertEqual(ids, [self.near.id, self.mid.id, self.far.id, self.nowhere.id])
+        d = {p["id"]: p["distance_km"] for p in r.data["results"]}
+        self.assertEqual(d[self.near.id], 0.0)
+        self.assertAlmostEqual(d[self.mid.id], 3.0, delta=0.1)
+        self.assertAlmostEqual(d[self.far.id], 27.5, delta=1.0)
+        self.assertIsNone(d[self.nowhere.id])
+
+    def test_radius_and_explicit_ordering(self):
+        ids = [p["id"] for p in self.get(lat=self.ORIGIN[0], lng=self.ORIGIN[1], radius_km=10).data["results"]]
+        self.assertEqual(sorted(ids), sorted([self.near.id, self.mid.id]))
+        # an explicit non-distance ordering still works alongside the origin
+        r = self.get(lat=self.ORIGIN[0], lng=self.ORIGIN[1], ordering="hourly_rate")
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(self.get().data["results"][0]["distance_km"])
+
+    def test_bad_coordinates(self):
+        self.assertEqual(self.get(lat=30).status_code, 400)
+        self.assertEqual(self.get(lat=95, lng=0).status_code, 400)
+        self.assertEqual(self.get(lat="x", lng=0).status_code, 400)
+        self.assertEqual(self.get(lat=30, lng=-97, radius_km=0).status_code, 400)
+
+    def test_pin_is_private_and_city_change_moves_to_city_center(self):
+        public = client_for().get(f"/api/providers/{self.far.id}/").data
+        self.assertIsNone(public["pin"])
+        self.assertTrue(public["has_location"])
+        c = client_for(self.far_user)
+        self.assertEqual(c.get("/api/providers/me/").data["pin"]["lat"], 30.5083)
+        r = c.patch("/api/providers/me/", {"location": "Georgetown"}, format="json")
+        self.assertEqual(r.data["pin"], {"lat": 30.6333, "lng": -97.677, "is_city_center": True})
+        r = c.patch("/api/providers/me/", {"latitude": "30.640000", "longitude": "-97.690000"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data["pin"]["is_city_center"])
+        self.assertEqual(c.patch("/api/providers/me/", {"latitude": "30.6"}, format="json").status_code, 400)
+        self.assertEqual(c.patch("/api/providers/me/", {"latitude": "91", "longitude": "0"}, format="json").status_code, 400)
+        r = c.patch("/api/providers/me/", {"latitude": None, "longitude": None}, format="json")
+        self.assertEqual(r.data["pin"], {"lat": 30.6333, "lng": -97.677, "is_city_center": True})
+        r = c.patch("/api/providers/me/", {"location": "Smallville"}, format="json")
+        self.assertIsNone(r.data["pin"])

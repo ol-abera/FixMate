@@ -1,6 +1,8 @@
 from django.db.models import Exists, OuterRef, Q
 from rest_framework.exceptions import ValidationError
 
+from common.geo import distance_km_expr
+
 from services.models import Service
 
 from .models import ProviderProfile, VerificationStatus
@@ -54,7 +56,28 @@ def filter_providers(qs, params):
         qs = qs.filter(availability="AVAILABLE")
     if params.get("instant_book") in ("1", "true", "True"):
         qs = qs.filter(instant_book=True)
+
+    origin = parse_origin(params)
+    if origin:
+        qs = qs.annotate(distance_km=distance_km_expr(*origin))
+        radius = _num(params, "radius_km")
+        if radius is not None:
+            if radius <= 0:
+                raise ValidationError({"radius_km": "Must be greater than 0."})
+            qs = qs.filter(distance_km__lte=radius)
     return qs.distinct()
+
+
+def parse_origin(params):
+    """(lat, lng) from ?lat=&lng=, or None. Both are required together."""
+    lat, lng = _num(params, "lat"), _num(params, "lng")
+    if lat is None and lng is None:
+        return None
+    if lat is None or lng is None:
+        raise ValidationError({"lat": "Send lat and lng together."})
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise ValidationError({"lat": "Coordinates are out of range."})
+    return lat, lng
 
 
 def apply_status_scope(qs, user, params):

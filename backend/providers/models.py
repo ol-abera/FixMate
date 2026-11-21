@@ -22,6 +22,8 @@ class ProviderProfile(models.Model):
     profession = models.CharField(max_length=120)
     description = models.TextField(blank=True)
     location = models.CharField(max_length=120, blank=True, db_index=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     years_of_experience = models.PositiveSmallIntegerField(default=0)
     hourly_rate = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     starting_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Minimum job price.")

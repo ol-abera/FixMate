@@ -5,6 +5,7 @@ Creates realistic DEVELOPMENT data mirroring the React frontend's mock dataset.
 No password is hard-coded: pass --password or set SEED_PASSWORD, otherwise a random one is
 generated and printed once. NEVER run against a production database.
 """
+import math
 import os
 import secrets
 from datetime import timedelta
@@ -16,6 +17,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from bookings.models import Booking, BookingEvent
+from common.geo import city_center
 from favorites.models import Favorite
 from messaging.models import Conversation, Message
 from notifications.models import Notification, NotificationType
@@ -145,7 +147,12 @@ class Command(BaseCommand):
 
         # ---- providers + services
         providers = {}
-        for (name, title, cat_names, city, rating, rate, min_job, instant, avail, yrs, resp, skills) in PROVIDERS:
+        for i, (name, title, cat_names, city, rating, rate, min_job, instant, avail, yrs, resp, skills) in enumerate(PROVIDERS):
+            # Spread pros around their city centre (roughly 1-6 km) so distance search has something to sort.
+            clat, clng = city_center(city)
+            angle = i * 2.399963  # golden angle keeps the points apart
+            spread = 0.012 + 0.006 * (i % 7)
+            lat, lng = round(clat + spread * math.sin(angle), 6), round(clng + spread * math.cos(angle), 6)
             first, last = name.split(" ", 1)
             u, created = User.objects.get_or_create(
                 email=email_for(name),
@@ -162,7 +169,7 @@ class Command(BaseCommand):
                     description=f"{name} is a {title.lower()} serving {city} with {yrs}+ years of hands-on experience. "
                                 "Known for transparent pricing, punctual arrivals and a spotless finish.",
                     verification_status="VERIFIED", availability="AVAILABLE" if avail else "BUSY",
-                    instant_book=instant, response_time_mins=resp, skills=skills,
+                    instant_book=instant, response_time_mins=resp, skills=skills, latitude=lat, longitude=lng,
                 ),
             )
             prof.categories.set([cats[c] for c in cat_names])
@@ -183,6 +190,7 @@ class Command(BaseCommand):
             pend_user.set_password(password)
             pend_user.save()
             pp = ProviderProfile.objects.create(user=pend_user, profession="Mechanic", location="Austin", hourly_rate=65,
+                                                latitude=30.2672, longitude=-97.7431,
                                                 starting_price=70, years_of_experience=6,
                                                 description="Mobile mechanic.", skills="Brakes,Oil change")
             pp.categories.add(cats["Mechanic"])

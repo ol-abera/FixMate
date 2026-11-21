@@ -1,4 +1,4 @@
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -9,7 +9,7 @@ from rest_framework.response import Response
 
 from common.permissions import IsAdminRole, IsProvider
 
-from .filters import apply_status_scope, filter_providers
+from .filters import apply_status_scope, filter_providers, parse_origin
 from .models import PortfolioImage, ProviderProfile, VerificationStatus
 from .serializers import (
     PortfolioImageSerializer, ProviderDetailSerializer, ProviderListSerializer, ProviderWriteSerializer,
@@ -61,6 +61,9 @@ class ProviderViewSet(viewsets.GenericViewSet):
         qs = apply_status_scope(self._base_qs(), request.user, request.query_params)
         qs = filter_providers(qs, request.query_params)
         qs = self.filter_queryset(qs)
+        # ?ordering=distance (or no ordering at all) sorts by distance when an origin is given.
+        if parse_origin(request.query_params) and request.query_params.get("ordering", "distance") == "distance":
+            qs = qs.order_by(F("distance_km").asc(nulls_last=True), "-rating", "id")
         page = self.paginate_queryset(qs)
         ser = ProviderListSerializer(page, many=True, context={"request": request})
         return self.get_paginated_response(ser.data)
