@@ -142,7 +142,8 @@ class ProviderViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
-        profile = set_verification(self.get_object_or_404(pk), VerificationStatus.REJECTED)
+        reason = str(request.data.get("reason", "")).strip()[:300]
+        profile = set_verification(self.get_object_or_404(pk), VerificationStatus.REJECTED, reason=reason)
         return Response({"id": profile.id, "verification_status": profile.verification_status})
 
     # ---- reviews of a provider ----

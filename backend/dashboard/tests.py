@@ -81,3 +81,29 @@ class PublicStatsTests(TestCase):
         self.assertEqual(len(r.data["featured_reviews"]), 1)
         self.assertEqual(r.data["featured_reviews"][0]["comment"], "Great work")
         self.assertEqual(r.data["featured_reviews"][0]["provider_city"], "Austin")
+
+
+class AdminConsoleTests(TestCase):
+    def test_admin_stats_include_trend_status_breakdown_and_signups(self):
+        admin = make_user("boss@example.com", role="ADMIN")
+        cu = make_user("ac@example.com")
+        _, p = make_provider("ap@example.com")
+        make_booking(cu, p, status="PENDING")
+        make_booking(cu, p, status="COMPLETED", time_slot="14:00 - 16:00")
+        r = client_for(admin).get("/api/dashboard/admin/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["bookings_by_status"], {"PENDING": 1, "COMPLETED": 1})
+        self.assertEqual(len(r.data["daily"]), 14)
+        self.assertEqual(sum(d["bookings"] for d in r.data["daily"]), 2)
+        self.assertEqual(r.data["recent_signups"][0]["email"], "ap@example.com")
+        self.assertIn("pending_providers", r.data)
+
+    def test_reject_reason_reaches_the_provider(self):
+        from notifications.models import Notification
+
+        admin = make_user("boss2@example.com", role="ADMIN")
+        pu, p = make_provider("rp@example.com", verified=False)
+        r = client_for(admin).post(f"/api/providers/{p.id}/reject/", {"reason": "License photo is unreadable."}, format="json")
+        self.assertEqual(r.data["verification_status"], "REJECTED")
+        n = Notification.objects.get(recipient=pu, title="Verification rejected")
+        self.assertIn("License photo is unreadable.", n.message)

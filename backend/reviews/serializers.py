@@ -53,3 +53,9 @@ class ReviewUpdateSerializer(serializers.ModelSerializer):
         if not 1 <= v <= 5:
             raise serializers.ValidationError("Rating must be between 1 and 5.")
         return v
+
+
+class ModerationReviewSerializer(ReviewSerializer):
+    class Meta(ReviewSerializer.Meta):
+        fields = ReviewSerializer.Meta.fields + ["is_published"]
+        read_only_fields = fields
