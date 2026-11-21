@@ -98,11 +98,13 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--password", help="Password for all seeded accounts (default: $SEED_PASSWORD or random).")
         parser.add_argument("--reset", action="store_true", help="Delete existing seeded (@fixmate.test) data first.")
+        parser.add_argument("--force", action="store_true",
+                            help="Allow running with DEBUG=False (disposable demo deployments only).")
 
     @transaction.atomic
     def handle(self, *args, **opts):
-        if not settings.DEBUG:
-            raise CommandError("seed_data only runs with DEBUG=True (development).")
+        if not settings.DEBUG and not opts["force"]:
+            raise CommandError("seed_data only runs with DEBUG=True (development). Use --force for a throwaway demo.")
         password = opts["password"] or os.environ.get("SEED_PASSWORD") or secrets.token_urlsafe(12)
         generated = not (opts["password"] or os.environ.get("SEED_PASSWORD"))
 
