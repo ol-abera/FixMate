@@ -190,7 +190,6 @@ export function ProviderDashboard() {
   const earningsData = (dash?.earnings.daily ?? []).map((d) => ({ day: d.day, amt: Number(d.amount) }));
   const pending = mine.filter((b) => b.status === "pending");
   const active = mine.filter((b) => b.status === "accepted" || b.status === "in_progress");
-  const completed = mine.filter((b) => b.status === "completed");
   const revenue = dash ? Number(dash.earnings.last_7_days) : 0;
 
   const respond = async (id: string, ok: boolean) => {

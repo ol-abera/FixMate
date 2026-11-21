@@ -5,18 +5,12 @@ import {
   MagnifyingGlass, Bell, Heart, List as ListIcon, X, User as UserIcon,
   SealCheck, Star, MapPin, ArrowRight, ChatCircle, CheckCircle, Clock,
   CurrencyDollar, ShieldCheck, CaretDown, SignOut, House, Wrench,
-  Users, Info, Lightning, Sparkle, PaintBucket, Scissors, Fan, Drop,
-  FirstAid,
+  Info, Lightning,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { getCategory, type BookingStatus, type Provider } from "../data/mockData";
 import { toast } from "sonner";
-
-export const CATEGORY_ICONS: Record<string, typeof Wrench> = {
-  Wrench, Lightning, Sparkle, PaintBucket, Scissors, Fan, Drop, FirstAid,
-  ShieldCheck, Users,
-};
 
 /* ----------------------------- shared primitives ---------------------------- */
 

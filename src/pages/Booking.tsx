@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, ArrowRight, CheckCircle, Calendar, Clock, MapPin, Phone,
+  ArrowLeft, ArrowRight, CheckCircle, Clock, MapPin, Phone,
   User as UserIcon, Camera, Paperclip, CurrencyDollar, ShieldCheck, Check,
   Info, Lightning,
 } from "@phosphor-icons/react";

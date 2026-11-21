@@ -11,12 +11,11 @@ import { toast } from "sonner";
 import { useApp, useProviderById } from "../context/AppContext";
 import { api, errorMessage } from "../services/api";
 import {
-  CATEGORIES, CITIES, PROVIDERS, STATS, HOW_IT_WORKS, TESTIMONIALS,
+  CATEGORIES, CITIES, STATS, HOW_IT_WORKS, TESTIMONIALS,
   getCategory, type Provider,
 } from "../data/mockData";
-import {
-  CATEGORY_ICONS, SectionHeading, ProviderCard, RatingStars, Avatar,
-} from "../components/Layout";
+import { SectionHeading, ProviderCard, RatingStars, Avatar } from "../components/Layout";
+import { CATEGORY_ICONS } from "../lib/icons";
 
 /* --------------------------------- Home ------------------------------------ */
 

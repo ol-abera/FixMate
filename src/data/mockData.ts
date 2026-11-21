@@ -175,8 +175,6 @@ const REVIEW_POOL: Omit<Review, "id">[] = [
   { author: "Avery S.", avatar: "https://i.pravatar.cc/80?img=25", rating: 5, date: "3 weeks ago", text: "Trustworthy and skilled. Cleaned up perfectly after the job. Highly recommend." },
 ];
 
-const TIER_NAMES = ["Essential", "Standard", "Premium"];
-
 function buildTiers(rate: number): PricingTier[] {
   return [
     { name: "Essential", price: rate, unit: "/hr", features: ["Diagnostic visit", "Labor included", "Same-day quote"] },
