@@ -1,14 +1,21 @@
-from django.db.models import Q
+from datetime import timedelta
+
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from common.permissions import IsCustomer
 from notifications.models import NotificationType
 from notifications.services import notify
 
-from .models import Booking
-from .serializers import BookingCreateSerializer, BookingSerializer
+from .models import MAX_BOOKING_PHOTOS, Booking, BookingPhoto, BookingStatus as S
+from .scheduling import COMMITTED
+from .serializers import BookingCreateSerializer, BookingPhotoSerializer, BookingSerializer
 from .workflow import transition
 
 
@@ -23,11 +30,13 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retr
     def get_permissions(self):
         if self.action == "create":
             return [IsCustomer()]
+        if self.action == "busy":
+            return [AllowAny()]
         return super().get_permissions()
 
     def get_queryset(self):
         u = self.request.user
-        qs = Booking.objects.select_related("customer", "provider__user", "category", "service").prefetch_related("events")
+        qs = Booking.objects.select_related("customer", "provider__user", "category", "service").prefetch_related("events", "photos")
         if u.role == "ADMIN":
             pass
         elif u.role == "PROVIDER":
@@ -44,6 +53,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retr
         ser.is_valid(raise_exception=True)
         booking = ser.save()
         from bookings.models import BookingEvent
+
         BookingEvent.objects.create(booking=booking, status=booking.status, label="Request sent", actor=request.user)
         notify(booking.provider.user, NotificationType.NEW_BOOKING, "New booking request",
                f"{request.user.full_name} requested {booking.title} on {booking.scheduled_date}.", booking_id=booking.id)
@@ -75,3 +85,39 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Retr
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
         return self._do(request, "cancel")
+
+    @action(detail=False, methods=["get"])
+    def busy(self, request):
+        """Slots a provider already committed to over the next 30 days. Exposes no customer details."""
+        provider = request.query_params.get("provider")
+        if not provider or not provider.isdigit():
+            raise ValidationError({"provider": "Pass ?provider=<id>."})
+        today = timezone.localdate()
+        rows = (Booking.objects.filter(provider_id=provider, provider__verification_status="VERIFIED", status__in=COMMITTED,
+                                       scheduled_date__range=(today, today + timedelta(days=30)))
+                .order_by("scheduled_date", "scheduled_time").values("scheduled_date", "time_slot"))
+        return Response([{"date": r["scheduled_date"], "time_slot": r["time_slot"]} for r in rows])
+
+    @action(detail=True, methods=["post"], url_path="photos", parser_classes=[MultiPartParser, FormParser])
+    def add_photo(self, request, pk=None):
+        booking = self.get_object()
+        if booking.customer_id != request.user.id:
+            raise PermissionDenied("Only the customer can add photos to a booking.")
+        if booking.status not in (S.PENDING, S.ACCEPTED, S.IN_PROGRESS):
+            raise ValidationError({"detail": "Photos can only be added to open bookings."})
+        if booking.photos.count() >= MAX_BOOKING_PHOTOS:
+            raise ValidationError({"image": f"A booking can have at most {MAX_BOOKING_PHOTOS} photos."})
+        ser = BookingPhotoSerializer(data=request.data, context={"request": request})
+        ser.is_valid(raise_exception=True)
+        ser.save(booking=booking)
+        return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"photos/(?P<photo_id>\d+)")
+    def remove_photo(self, request, pk=None, photo_id=None):
+        booking = self.get_object()
+        if booking.customer_id != request.user.id:
+            raise PermissionDenied("Only the customer can remove booking photos.")
+        photo = get_object_or_404(BookingPhoto, pk=photo_id, booking=booking)
+        photo.image.delete(save=False)
+        photo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

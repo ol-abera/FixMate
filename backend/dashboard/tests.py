@@ -42,7 +42,7 @@ class DashboardTests(TestCase):
     def test_provider_dashboard_earnings_and_reviews(self):
         make_booking(self.cu, self.p, status="PENDING")
         make_booking(self.cu, self.p, status="IN_PROGRESS")
-        done = make_booking(self.cu, self.p, status="PENDING", estimated_price=100)
+        done = make_booking(self.cu, self.p, status="PENDING", estimated_price=100, time_slot="14:00 - 16:00")
         c = client_for(self.pu)
         c.post(f"/api/bookings/{done.id}/accept/")
         c.post(f"/api/bookings/{done.id}/start/")

@@ -124,3 +124,111 @@ class BookingReviewFieldTests(TestCase):
         rv = Review.objects.create(customer=cu, provider=p, booking=b, rating=4, comment="Good")
         r = client_for(cu).get(f"/api/bookings/{b.id}/")
         self.assertEqual(r.data["review"], {"id": rv.id, "rating": 4, "comment": "Good"})
+
+
+class DoubleBookingTests(TestCase):
+    def setUp(self):
+        self.cu = make_user("dc1@example.com")
+        self.cu2 = make_user("dc2@example.com")
+        self.pu, self.p = make_provider("dp1@example.com")
+        self.day = timezone.localdate() + timedelta(days=4)
+
+    def post(self, user, slot, **kw):
+        return client_for(user).post("/api/bookings/", {
+            "provider": self.p.id, "title": "Job", "description": "d", "scheduled_date": str(self.day),
+            "time_slot": slot, "location": "x", **kw,
+        }, format="json")
+
+    def test_customer_cannot_double_submit_same_slot(self):
+        self.assertEqual(self.post(self.cu, "10:00 - 12:00").status_code, 201)
+        r = self.post(self.cu, "11:00 - 13:00")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("time_slot", r.data["errors"])
+        self.assertEqual(self.post(self.cu, "12:00 - 14:00").status_code, 201)  # touching, not overlapping
+
+    def test_committed_slot_blocks_new_requests_but_pending_does_not(self):
+        make_booking(self.cu2, self.p, status="PENDING", scheduled_date=self.day)
+        self.assertEqual(self.post(self.cu, "10:00 - 12:00").status_code, 201)
+        make_booking(self.cu2, self.p, status="ACCEPTED", scheduled_date=self.day, time_slot="14:00 - 16:00")
+        r = self.post(self.cu, "14:00 - 16:00")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("already booked", str(r.data["errors"]["time_slot"]))
+
+    def test_provider_cannot_accept_overlapping_jobs(self):
+        a = make_booking(self.cu, self.p, scheduled_date=self.day)
+        b = make_booking(self.cu2, self.p, scheduled_date=self.day, time_slot="11:00 - 13:00")
+        c = client_for(self.pu)
+        self.assertEqual(c.post(f"/api/bookings/{a.id}/accept/").status_code, 200)
+        r = c.post(f"/api/bookings/{b.id}/accept/")
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(c.post(f"/api/bookings/{b.id}/decline/").status_code, 200)
+
+    def test_busy_endpoint_lists_only_committed_slots(self):
+        make_booking(self.cu, self.p, status="ACCEPTED", scheduled_date=self.day)
+        make_booking(self.cu2, self.p, status="PENDING", scheduled_date=self.day, time_slot="14:00 - 16:00")
+        r = client_for().get(f"/api/bookings/busy/?provider={self.p.id}")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data, [{"date": self.day, "time_slot": "10:00 - 12:00"}])
+        self.assertEqual(client_for().get("/api/bookings/busy/").status_code, 400)
+
+
+class BookingNotesPhotosTests(TestCase):
+    def setUp(self):
+        import tempfile
+
+        from django.test import override_settings
+
+        self.media = override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+        self.media.enable()
+        self.cu = make_user("nc@example.com")
+        self.other = make_user("nc2@example.com")
+        self.pu, self.p = make_provider("np@example.com")
+
+    def tearDown(self):
+        self.media.disable()
+
+    def png(self):
+        import io
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (8, 8), (0, 128, 0)).save(buf, "PNG")
+        return SimpleUploadedFile("job.png", buf.getvalue(), content_type="image/png")
+
+    def test_notes_saved_and_visible_to_provider(self):
+        r = client_for(self.cu).post("/api/bookings/", {
+            "provider": self.p.id, "title": "Job", "description": "d", "location": "x", "notes": "Gate code 4411",
+            "scheduled_date": str(timezone.localdate() + timedelta(days=1)), "time_slot": "08:00 - 10:00",
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.data)
+        got = client_for(self.pu).get(f"/api/bookings/{r.data['id']}/")
+        self.assertEqual(got.data["notes"], "Gate code 4411")
+
+    def test_customer_uploads_and_removes_photos(self):
+        b = make_booking(self.cu, self.p)
+        c = client_for(self.cu)
+        r = c.post(f"/api/bookings/{b.id}/photos/", {"image": self.png()}, format="multipart")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(r.data["image"].startswith("http"))
+        detail = client_for(self.pu).get(f"/api/bookings/{b.id}/").data
+        self.assertEqual(len(detail["photos"]), 1)
+        # provider and strangers can't add or remove
+        self.assertEqual(client_for(self.pu).post(f"/api/bookings/{b.id}/photos/", {"image": self.png()}, format="multipart").status_code, 403)
+        self.assertEqual(client_for(self.other).delete(f"/api/bookings/{b.id}/photos/{r.data['id']}/").status_code, 404)
+        self.assertEqual(c.delete(f"/api/bookings/{b.id}/photos/{r.data['id']}/").status_code, 204)
+        self.assertEqual(c.get(f"/api/bookings/{b.id}/").data["photos"], [])
+
+    def test_photo_limits(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        b = make_booking(self.cu, self.p)
+        c = client_for(self.cu)
+        bad = SimpleUploadedFile("x.png", b"nope", content_type="image/png")
+        self.assertEqual(c.post(f"/api/bookings/{b.id}/photos/", {"image": bad}, format="multipart").status_code, 400)
+        for _ in range(6):
+            self.assertEqual(c.post(f"/api/bookings/{b.id}/photos/", {"image": self.png()}, format="multipart").status_code, 201)
+        self.assertEqual(c.post(f"/api/bookings/{b.id}/photos/", {"image": self.png()}, format="multipart").status_code, 400)
+        done = make_booking(self.cu, self.p, status="COMPLETED")
+        self.assertEqual(c.post(f"/api/bookings/{done.id}/photos/", {"image": self.png()}, format="multipart").status_code, 400)
