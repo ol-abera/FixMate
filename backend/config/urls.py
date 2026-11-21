@@ -18,6 +18,7 @@ urlpatterns = [
     path("api/conversations/", include("messaging.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/dashboard/", include("dashboard.urls")),
+    path("api/payments/", include("payments.urls")),
 ]
 
 if settings.DEBUG:

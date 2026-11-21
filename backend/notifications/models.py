@@ -11,6 +11,7 @@ class NotificationType(models.TextChoices):
     REVIEW_REMINDER = "REVIEW_REMINDER", "Review reminder"
     PROVIDER_VERIFICATION = "PROVIDER_VERIFICATION", "Provider verification"
     UPCOMING_BOOKING = "UPCOMING_BOOKING", "Upcoming booking"
+    PAYMENT_RECEIVED = "PAYMENT_RECEIVED", "Payment received"
 
 
 class Notification(models.Model):
