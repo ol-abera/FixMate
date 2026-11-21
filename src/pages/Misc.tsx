@@ -9,7 +9,7 @@ import {
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { errorMessage } from "../services/api";
-import { CATEGORIES, CITIES } from "../data/mockData";
+import { formatCount } from "../lib/format";
 import { Avatar, EmptyState, SectionHeading } from "../components/Layout";
 import { notificationLink } from "../lib/links";
 import { toast } from "sonner";
@@ -285,9 +285,9 @@ function Field({
 
 export function BecomeProviderPage() {
   const navigate = useNavigate();
-  const { register } = useApp();
+  const { register, categories, cities } = useApp();
   const [busy, setBusy] = useState(false);
-  const [f, setF] = useState({ name: "", email: "", password: "", title: "", categoryId: CATEGORIES[0].id, city: CITIES[0], rate: "60", experience: "5", bio: "" });
+  const [f, setF] = useState({ name: "", email: "", password: "", title: "", categoryId: "", city: "", rate: "60", experience: "5", bio: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const valid = f.name && f.email && f.title && f.password.length >= 8 && Number(f.rate) > 0;
 
@@ -299,7 +299,7 @@ export function BecomeProviderPage() {
       const [first, ...rest] = f.name.trim().split(" ");
       await register({
         email: f.email, password: f.password, firstName: first, lastName: rest.join(" "), role: "provider",
-        profession: f.title, category: f.categoryId, location: f.city, hourlyRate: Number(f.rate),
+        profession: f.title, category: f.categoryId || categories[0]?.id, location: f.city.trim(), hourlyRate: Number(f.rate),
         yearsOfExperience: Number(f.experience), description: f.bio,
       });
       toast.success("Profile submitted!", { description: "You'll appear in search once our team verifies you." });
@@ -332,15 +332,16 @@ export function BecomeProviderPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-600">Primary category</label>
-            <select value={f.categoryId} onChange={(e) => set("categoryId", e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200">
-              {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <select value={f.categoryId || categories[0]?.id} onChange={(e) => set("categoryId", e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200">
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-600">City</label>
-            <select value={f.city} onChange={(e) => set("city", e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200">{CITIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+            <input list="pro-cities" value={f.city} onChange={(e) => set("city", e.target.value)} placeholder="Austin" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200" />
+            <datalist id="pro-cities">{cities.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-600">Hourly rate ($)</label>
@@ -411,6 +412,7 @@ export function HelpPage() {
 /* ---------------------------------- About ---------------------------------- */
 
 export function AboutPage() {
+  const { stats } = useApp();
   const values = [
     { icon: ShieldCheck, t: "Trust first", d: "Every pro is ID and background verified before they can list a single service." },
     { icon: Users, t: "Community", d: "We champion local businesses and keep money in your neighborhood." },
@@ -435,7 +437,10 @@ export function AboutPage() {
       </div>
 
       <div className="mt-10 grid gap-4 rounded-3xl bg-slate-900 p-8 text-white sm:grid-cols-4">
-        {[["2,400+", "Verified pros"], ["180k", "Jobs completed"], ["4.9", "Average rating"], ["12", "Cities served"]].map(([v, l]) => (
+        {[
+          [formatCount(stats?.verifiedProviders), "Verified pros"], [formatCount(stats?.jobsCompleted), "Jobs completed"],
+          [stats ? stats.avgRating.toFixed(1) : "–", "Average rating"], [formatCount(stats?.citiesCount), "Cities served"],
+        ].map(([v, l]) => (
           <div key={l} className="text-center"><p className="text-3xl font-extrabold">{v}</p><p className="mt-1 text-sm text-slate-400">{l}</p></div>
         ))}
       </div>
