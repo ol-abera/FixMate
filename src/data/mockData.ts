@@ -120,6 +120,14 @@ export interface BookingRequest {
   review?: { id: string; rating: number; comment: string } | null;
   notes?: string;
   photos?: { id: string; url: string }[];
+  payment?: BookingPayment | null;
+  canPay?: boolean;
+}
+
+export interface BookingPayment {
+  status: "pending" | "paid" | "failed";
+  amount: number;
+  paidAt: string | null;
 }
 
 export interface Message {

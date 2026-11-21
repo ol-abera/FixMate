@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import {
   House, CurrencyDollar, TrendUp, Star, Calendar, CheckCircle, X, ChatCircle,
   Wrench, Clock, Users, Gear, MapPin, ArrowRight, SealCheck, Bell, Trash, Phone, Warning,
-  Note, Paperclip,
+  Note, Paperclip, CreditCard, SpinnerGap,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
@@ -194,6 +194,22 @@ export function CustomerDashboard() {
     try { navigate(`/messages?c=${await startConversation(providerId)}`); } catch (e) { toast.error(errorMessage(e)); }
   };
   const recommended = providers.filter((p) => !favorites.includes(p.id)).sort((a, b) => b.rating - a.rating).slice(0, 3);
+  const [paying, setPaying] = useState<string | null>(null);
+  const [sp, setSp] = useSearchParams();
+  useEffect(() => {
+    if (sp.get("payment") !== "cancelled") return;
+    toast.info("Payment cancelled. You can pay whenever you're ready.");
+    setSp((p) => { p.delete("payment"); return p; }, { replace: true });
+  }, [sp, setSp]);
+  const pay = async (b: BookingRequest) => {
+    setPaying(b.id);
+    try {
+      window.location.assign((await api.startCheckout(b.id)).checkout_url);
+    } catch (e) {
+      toast.error(errorMessage(e));
+      setPaying(null);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -234,6 +250,8 @@ export function CustomerDashboard() {
                   <span className="inline-flex items-center gap-1"><Calendar size={14} /> {b.date} · {b.timeSlot}</span>
                   <span className="inline-flex items-center gap-1"><MapPin size={14} /> {b.address}</span>
                   <span className="inline-flex items-center gap-1 font-semibold text-slate-700"><CurrencyDollar size={14} /> ${b.estimate}{b.finalPrice == null && b.status !== "completed" ? " est." : ""}</span>
+                  {b.payment?.status === "paid" && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700 ring-1 ring-emerald-100"><CheckCircle size={12} weight="fill" /> Paid</span>}
+                  {b.canPay && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700 ring-1 ring-amber-100">Payment due</span>}
                 </div>
                 <JobExtras booking={b} editable />
                 <div className="mt-4 border-t border-slate-100 pt-3">
@@ -254,8 +272,13 @@ export function CustomerDashboard() {
                   <button onClick={() => openChat(b.providerId)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><ChatCircle size={14} /> Message</button>
                   {(b.status === "pending" || b.status === "accepted") && <button onClick={() => setConfirm({ booking: b, action: "cancelled" })} className="ml-auto rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-50">Cancel</button>}
                   {b.status === "in_progress" && <button onClick={() => setConfirm({ booking: b, action: "completed" })} className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Confirm completion</button>}
-                  {b.status === "completed" && b.canReview && <button onClick={() => setReviewing(b)} className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Leave review</button>}
-                  {b.status === "completed" && b.review && <button onClick={() => setReviewing(b)} className="ml-auto inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"><RatingStars rating={b.review.rating} size={12} /> Edit review</button>}
+                  {b.canPay && (
+                    <button onClick={() => pay(b)} disabled={paying === b.id} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+                      {paying === b.id ? <SpinnerGap size={14} className="animate-spin" /> : <CreditCard size={14} />} Pay ${b.estimate}
+                    </button>
+                  )}
+                  {b.status === "completed" && b.canReview && <button onClick={() => setReviewing(b)} className={cn("rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700", b.canPay ? "border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50" : "ml-auto")}>Leave review</button>}
+                  {b.status === "completed" && b.review && <button onClick={() => setReviewing(b)} className={cn("inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50", !b.canPay && "ml-auto")}><RatingStars rating={b.review.rating} size={12} /> Edit review</button>}
                 </div>
               </div>
             ))}
