@@ -1,14 +1,42 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect, type ComponentType } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider } from "./context/AppContext";
 import { Layout } from "./components/Layout";
-import { HomePage, ExplorePage, ProviderProfilePage } from "./pages/Browse";
-import { BookingWizardPage } from "./pages/Booking";
-import { CustomerDashboard, FavoritesPage, ProviderDashboard } from "./pages/Dashboards";
-import { AccountSettingsPage, ProviderSettingsPage } from "./pages/Settings";
 import { RequireAuth } from "./components/RequireAuth";
-import { MessagesPage, NotificationsPage, AuthPage, BecomeProviderPage, AboutPage, HelpPage, ForgotPasswordPage, ResetPasswordPage } from "./pages/Misc";
+// The landing/browse pages ship in the main bundle; everything else (incl. recharts) loads on demand.
+import { HomePage, ExplorePage, ProviderProfilePage } from "./pages/Browse";
+
+function named<M>(load: () => Promise<M>, name: keyof M) {
+  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType })));
+}
+const booking = () => import("./pages/Booking");
+const dashboards = () => import("./pages/Dashboards");
+const settings = () => import("./pages/Settings");
+const misc = () => import("./pages/Misc");
+
+const BookingWizardPage = named(booking, "BookingWizardPage");
+const CustomerDashboard = named(dashboards, "CustomerDashboard");
+const ProviderDashboard = named(dashboards, "ProviderDashboard");
+const FavoritesPage = named(dashboards, "FavoritesPage");
+const AccountSettingsPage = named(settings, "AccountSettingsPage");
+const ProviderSettingsPage = named(settings, "ProviderSettingsPage");
+const MessagesPage = named(misc, "MessagesPage");
+const NotificationsPage = named(misc, "NotificationsPage");
+const AuthPage = named(misc, "AuthPage");
+const BecomeProviderPage = named(misc, "BecomeProviderPage");
+const AboutPage = named(misc, "AboutPage");
+const HelpPage = named(misc, "HelpPage");
+const ForgotPasswordPage = named(misc, "ForgotPasswordPage");
+const ResetPasswordPage = named(misc, "ResetPasswordPage");
+
+function PageFallback() {
+  return (
+    <div className="grid min-h-[50vh] place-items-center" role="status" aria-label="Loading page">
+      <span className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+    </div>
+  );
+}
 
 function ScrollToTop() {
   const { pathname, hash } = useLocation();
@@ -36,6 +64,7 @@ export default function App() {
       <AppProvider>
         <ScrollToTop />
         <Layout>
+          <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/explore" element={<ExplorePage />} />
@@ -56,6 +85,7 @@ export default function App() {
             <Route path="/favorites" element={<RequireAuth roles={["customer"]}><FavoritesPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </Layout>
         <Toaster position="top-right" richColors closeButton />
       </AppProvider>

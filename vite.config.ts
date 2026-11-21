@@ -33,6 +33,14 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 5000, // Increases the limit to 5MB
+    rollupOptions: {
+      output: {
+        // Long-lived vendor chunks so app deploys don't bust the framework cache.
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          motion: ["framer-motion"],
+        },
+      },
+    },
   },
 });
