@@ -80,15 +80,26 @@ class ProviderReviewSerializer(serializers.Serializer):
 
 class ProviderDetailSerializer(ProviderListSerializer):
     gallery = serializers.SerializerMethodField()
+    portfolio = serializers.SerializerMethodField()
     services = serializers.SerializerMethodField()
     reviews = serializers.SerializerMethodField()
+    favorites_count = serializers.SerializerMethodField()
 
     class Meta(ProviderListSerializer.Meta):
-        fields = ProviderListSerializer.Meta.fields + ["gallery", "services", "reviews", "created_at"]
+        fields = ProviderListSerializer.Meta.fields + [
+            "gallery", "portfolio", "services", "reviews", "favorites_count", "created_at",
+        ]
 
     def get_gallery(self, obj):
         req = self.context.get("request")
         return [abs_url(req, i.image) for i in obj.portfolio_images.all()]
+
+    def get_portfolio(self, obj):
+        req = self.context.get("request")
+        return [{"id": i.id, "image": abs_url(req, i.image), "caption": i.caption} for i in obj.portfolio_images.all()]
+
+    def get_favorites_count(self, obj):
+        return obj.favorited_by.count()
 
     def get_services(self, obj):
         qs = obj.services.filter(is_active=True).select_related("category", "provider__user")

@@ -5,56 +5,110 @@ import {
 } from "recharts";
 import {
   House, CurrencyDollar, TrendUp, Star, Calendar, CheckCircle, X, ChatCircle,
-  Wrench, Clock, Users, Gear, MapPin, ArrowRight, SealCheck, Bell,
+  Wrench, Clock, Users, Gear, MapPin, ArrowRight, SealCheck, Bell, Trash, Phone, Warning,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { api, errorMessage } from "../services/api";
-import { getCategory } from "../data/mockData";
 import { Avatar, ProviderCard, RatingStars, StatusBadge, SectionHeading, EmptyState } from "../components/Layout";
 import { toast } from "sonner";
+import type { BookingRequest } from "../data/mockData";
 
 const ACTIVE_STATUSES = ["pending", "accepted", "in_progress"];
 
 interface ProviderDash {
+  verification_status: "PENDING" | "VERIFIED" | "REJECTED";
   stats: { rating: string | number; total_reviews: number };
   earnings: { total: string | number; last_7_days: string | number; daily: { day: string; amount: string | number }[] };
   recent_reviews: { id: number; author: string; rating: number; comment: string }[];
 }
 
-function ReviewDialog({ id, onClose }: { id: string; onClose: () => void }) {
-  const { submitReview } = useApp();
-  const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
-  const [busy, setBusy] = useState(false);
-  const send = async () => {
-    setBusy(true);
-    try {
-      await submitReview(id, rating, comment);
-      toast.success("Thanks for your review!");
-      onClose();
-    } catch (e) {
-      toast.error(errorMessage(e));
-    } finally { setBusy(false); }
-  };
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <p className="text-lg font-bold text-slate-900">Rate your pro</p>
-        <div className="mt-3 flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} type="button" onClick={() => setRating(n)} aria-label={`${n} stars`}>
-              <Star size={28} weight={n <= rating ? "fill" : "regular"} className={n <= rating ? "text-amber-400" : "text-slate-300"} />
-            </button>
-          ))}
-        </div>
-        <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={4} placeholder="How did it go?" className="mt-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200" />
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50">Cancel</button>
-          <button onClick={send} disabled={busy} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Submit review</button>
-        </div>
+      <div role="dialog" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <p className="text-lg font-bold text-slate-900">{title}</p>
+        {children}
       </div>
     </div>
+  );
+}
+
+function ReviewDialog({ booking, onClose }: { booking: BookingRequest; onClose: () => void }) {
+  const { submitReview, updateReview, deleteReview } = useApp();
+  const existing = booking.review;
+  const [rating, setRating] = useState(existing?.rating ?? 5);
+  const [comment, setComment] = useState(existing?.comment ?? "");
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<void>, msg: string) => {
+    setBusy(true);
+    try { await fn(); toast.success(msg); onClose(); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); }
+  };
+  const send = () => run(
+    () => (existing ? updateReview(existing.id, rating, comment) : submitReview(booking.id, rating, comment)),
+    existing ? "Review updated" : "Thanks for your review!",
+  );
+  return (
+    <Modal title={existing ? "Edit your review" : "Rate your pro"} onClose={onClose}>
+      <div className="mt-3 flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} type="button" onClick={() => setRating(n)} aria-label={`${n} stars`}>
+            <Star size={28} weight={n <= rating ? "fill" : "regular"} className={n <= rating ? "text-amber-400" : "text-slate-300"} />
+          </button>
+        ))}
+      </div>
+      <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={4} placeholder="How did it go?" className="mt-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200" />
+      <div className="mt-4 flex items-center justify-end gap-2">
+        {existing && <button onClick={() => run(() => deleteReview(existing.id), "Review deleted")} disabled={busy} className="mr-auto inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50"><Trash size={15} /> Delete</button>}
+        <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50">Cancel</button>
+        <button onClick={send} disabled={busy} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{existing ? "Save review" : "Submit review"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ConfirmDialog({ title, body, confirmLabel, danger, onConfirm, onClose }: {
+  title: string; body: string; confirmLabel: string; danger?: boolean; onConfirm: () => Promise<void>; onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal title={title} onClose={onClose}>
+      <p className="mt-2 text-sm text-slate-600">{body}</p>
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50">Back</button>
+        <button disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); setBusy(false); onClose(); }}
+          className={cn("rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50", danger ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700")}>{confirmLabel}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function CompleteDialog({ booking, onClose }: { booking: BookingRequest; onClose: () => void }) {
+  const { updateBookingStatus } = useApp();
+  const [price, setPrice] = useState(String(booking.estimate));
+  const [busy, setBusy] = useState(false);
+  const valid = price.trim() !== "" && Number(price) >= 0;
+  const done = async () => {
+    setBusy(true);
+    await updateBookingStatus(booking.id, "completed", Number(price));
+    setBusy(false);
+    toast.success("Job marked complete");
+    onClose();
+  };
+  return (
+    <Modal title="Complete this job" onClose={onClose}>
+      <p className="mt-2 text-sm text-slate-600">Confirm the final price for <b>{booking.serviceName}</b>. The customer sees this on their booking.</p>
+      <label className="mt-4 mb-1 block text-sm font-medium text-slate-600">Final price ($)</label>
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 focus-within:ring-2 focus-within:ring-emerald-200">
+        <CurrencyDollar size={16} className="text-slate-400" />
+        <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-transparent py-2.5 text-sm outline-none" />
+      </div>
+      <p className="mt-1 text-xs text-slate-400">Estimate was ${booking.estimate}.</p>
+      <div className="mt-5 flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50">Back</button>
+        <button disabled={busy || !valid} onClick={done} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">Mark complete</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -74,9 +128,10 @@ function StatCard({ icon: Icon, label, value, trend, accent }: { icon: typeof Ho
 /* --------------------------- Customer dashboard ---------------------------- */
 
 export function CustomerDashboard() {
-  const { bookings, user, favorites, providers, ready, startConversation } = useApp();
+  const { bookings, user, favorites, providers, ready, startConversation, getCategory, updateBookingStatus } = useApp();
   const navigate = useNavigate();
-  const [reviewing, setReviewing] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<BookingRequest | null>(null);
+  const [confirm, setConfirm] = useState<{ booking: BookingRequest; action: "cancelled" | "completed" } | null>(null);
   if (ready && (!user || user.role !== "customer")) return <Navigate to="/auth" replace />;
   const mine = bookings; // already scoped to the signed-in customer by the API
   const favProviders = providers.filter((p) => favorites.includes(p.id));
@@ -124,7 +179,7 @@ export function CustomerDashboard() {
                 <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
                   <span className="inline-flex items-center gap-1"><Calendar size={14} /> {b.date} · {b.timeSlot}</span>
                   <span className="inline-flex items-center gap-1"><MapPin size={14} /> {b.address}</span>
-                  <span className="inline-flex items-center gap-1 font-semibold text-slate-700"><CurrencyDollar size={14} /> ${b.estimate}</span>
+                  <span className="inline-flex items-center gap-1 font-semibold text-slate-700"><CurrencyDollar size={14} /> ${b.estimate}{b.finalPrice == null && b.status !== "completed" ? " est." : ""}</span>
                 </div>
                 <div className="mt-4 border-t border-slate-100 pt-3">
                   <div className="flex items-center justify-between">
@@ -142,8 +197,10 @@ export function CustomerDashboard() {
                 <div className="mt-4 flex gap-2">
                   <Link to={`/providers/${b.providerId}`} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">View pro</Link>
                   <button onClick={() => openChat(b.providerId)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><ChatCircle size={14} /> Message</button>
-                  {b.status === "completed" && b.canReview && <button onClick={() => setReviewing(b.id)} className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Leave review</button>}
-                  {b.status === "completed" && b.hasReview && <span className="ml-auto text-xs font-medium text-emerald-600">Reviewed</span>}
+                  {(b.status === "pending" || b.status === "accepted") && <button onClick={() => setConfirm({ booking: b, action: "cancelled" })} className="ml-auto rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-50">Cancel</button>}
+                  {b.status === "in_progress" && <button onClick={() => setConfirm({ booking: b, action: "completed" })} className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Confirm completion</button>}
+                  {b.status === "completed" && b.canReview && <button onClick={() => setReviewing(b)} className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700">Leave review</button>}
+                  {b.status === "completed" && b.review && <button onClick={() => setReviewing(b)} className="ml-auto inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"><RatingStars rating={b.review.rating} size={12} /> Edit review</button>}
                 </div>
               </div>
             ))}
@@ -178,7 +235,19 @@ export function CustomerDashboard() {
         <SectionHeading eyebrow="For you" title="Recommended pros" />
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{recommended.map((p) => <ProviderCard key={p.id} provider={p} />)}</div>
       </div>
-      {reviewing && <ReviewDialog id={reviewing} onClose={() => setReviewing(null)} />}
+      {reviewing && <ReviewDialog booking={reviewing} onClose={() => setReviewing(null)} />}
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.action === "cancelled" ? "Cancel this booking?" : "Confirm the job is done?"}
+          body={confirm.action === "cancelled"
+            ? `${confirm.booking.serviceName} with ${confirm.booking.providerName} will be cancelled and the pro notified.`
+            : `This marks ${confirm.booking.serviceName} as completed so you can leave a review.`}
+          confirmLabel={confirm.action === "cancelled" ? "Cancel booking" : "Confirm completion"}
+          danger={confirm.action === "cancelled"}
+          onConfirm={() => updateBookingStatus(confirm.booking.id, confirm.action)}
+          onClose={() => setConfirm(null)}
+        />
+      )}
     </div>
   );
 }
@@ -206,9 +275,16 @@ export function FavoritesPage() {
 /* --------------------------- Provider dashboard ---------------------------- */
 
 export function ProviderDashboard() {
-  const { bookings, updateBookingStatus, user, providers, ready } = useApp();
+  const { bookings, updateBookingStatus, user, providers, ready, startConversationWithCustomer } = useApp();
+  const navigate = useNavigate();
   const mine = bookings; // already scoped to the signed-in provider by the API
   const [dash, setDash] = useState<ProviderDash | null>(null);
+  const [completing, setCompleting] = useState<BookingRequest | null>(null);
+  const [cancelling, setCancelling] = useState<BookingRequest | null>(null);
+  const messageCustomer = async (b: BookingRequest) => {
+    if (!b.customerId) return;
+    try { navigate(`/messages?c=${await startConversationWithCustomer(b.customerId)}`); } catch (e) { toast.error(errorMessage(e)); }
+  };
   useEffect(() => {
     if (user?.role !== "provider") return;
     api.providerDashboard().then(setDash).catch((e) => console.error(errorMessage(e)));
@@ -234,8 +310,21 @@ export function ProviderDashboard() {
             <p className="text-sm text-slate-500">Your jobs, leads and earnings at a glance.</p>
           </div>
         </div>
-        <Link to="/provider-dashboard/settings" onClick={(e) => { e.preventDefault(); toast.info("Profile settings coming soon"); }} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Gear size={16} /> Edit profile</Link>
+        <Link to="/provider-dashboard/settings" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Gear size={16} /> Edit profile</Link>
       </div>
+
+      {dash && dash.verification_status !== "VERIFIED" && (
+        <div className={cn("mt-6 flex items-start gap-3 rounded-2xl border p-4 text-sm", dash.verification_status === "REJECTED" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-800")}>
+          <Warning size={20} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">{dash.verification_status === "REJECTED" ? "Your profile was not approved" : "Your profile is under review"}</p>
+            <p className="mt-0.5">{dash.verification_status === "REJECTED"
+              ? "Update your details in profile settings and contact support to be reviewed again."
+              : "You will appear in search and can receive bookings once our team verifies you. Complete your profile in the meantime."}</p>
+            <Link to="/provider-dashboard/settings" className="mt-2 inline-flex items-center gap-1 font-semibold underline">Complete profile <ArrowRight size={13} /></Link>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={CurrencyDollar} label="Revenue (7d)" value={`$${revenue.toLocaleString()}`} />
@@ -265,6 +354,7 @@ export function ProviderDashboard() {
                   <div className="mt-3 flex gap-2">
                     <button onClick={() => respond(b.id, true)} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700"><CheckCircle size={15} /> Accept</button>
                     <button onClick={() => respond(b.id, false)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"><X size={15} /> Decline</button>
+                    <button onClick={() => messageCustomer(b)} aria-label="Message customer" className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-50"><ChatCircle size={16} /></button>
                   </div>
                 </div>
               ))}
@@ -275,12 +365,21 @@ export function ProviderDashboard() {
             <p className="font-bold text-slate-900">Active jobs</p>
             <div className="mt-4 space-y-3">
               {active.length === 0 ? <p className="text-sm text-slate-400">No active jobs right now.</p> : active.map((b) => (
-                <div key={b.id} id={`booking-${b.id}`} className="flex scroll-mt-24 items-center justify-between rounded-xl border border-slate-200 p-4 transition">
-                  <div><p className="font-semibold text-slate-900">{b.serviceName}</p><p className="text-sm text-slate-500">{b.customerName} · {b.address}</p></div>
+                <div key={b.id} id={`booking-${b.id}`} className="flex scroll-mt-24 flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4 transition">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900">{b.serviceName}</p>
+                    <p className="text-sm text-slate-500">{b.customerName} · {b.address}</p>
+                    <p className="mt-1 flex flex-wrap gap-3 text-xs text-slate-500">
+                      <span className="inline-flex items-center gap-1"><Calendar size={13} /> {b.date} · {b.timeSlot}</span>
+                      {b.contact && <span className="inline-flex items-center gap-1"><Phone size={13} /> {b.contact}</span>}
+                    </p>
+                  </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={b.status} />
+                    <button onClick={() => messageCustomer(b)} aria-label="Message customer" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"><ChatCircle size={15} /></button>
+                    {b.status === "accepted" && <button onClick={() => setCancelling(b)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50">Cancel</button>}
                     {b.status === "accepted" && <button onClick={() => updateBookingStatus(b.id, "in_progress")} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Start job</button>}
-                    {b.status === "in_progress" && <button onClick={() => updateBookingStatus(b.id, "completed")} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Mark complete</button>}
+                    {b.status === "in_progress" && <button onClick={() => setCompleting(b)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">Mark complete</button>}
                   </div>
                 </div>
               ))}
@@ -308,8 +407,9 @@ export function ProviderDashboard() {
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="font-bold text-slate-900">Recent reviews</p>
             <div className="mt-3 space-y-3">
-              {(dash?.recent_reviews ?? []).map((r) => ({ n: r.author, r: r.rating, t: r.comment })).map((rv) => (
-                <div key={rv.n} className="rounded-xl bg-slate-50 p-3">
+              {dash && dash.recent_reviews.length === 0 && <p className="text-sm text-slate-400">No reviews yet.</p>}
+              {(dash?.recent_reviews ?? []).map((r) => ({ id: r.id, n: r.author, r: r.rating, t: r.comment })).map((rv) => (
+                <div key={rv.id} className="rounded-xl bg-slate-50 p-3">
                   <div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-800">{rv.n}</p><RatingStars rating={rv.r} /></div>
                   <p className="mt-1 text-sm text-slate-600">{rv.t}</p>
                 </div>
@@ -318,6 +418,11 @@ export function ProviderDashboard() {
           </div>
         </aside>
       </div>
+      {completing && <CompleteDialog booking={completing} onClose={() => setCompleting(null)} />}
+      {cancelling && (
+        <ConfirmDialog title="Cancel this job?" body={`${cancelling.serviceName} for ${cancelling.customerName} will be cancelled and the customer notified.`}
+          confirmLabel="Cancel job" danger onConfirm={() => updateBookingStatus(cancelling.id, "cancelled")} onClose={() => setCancelling(null)} />
+      )}
     </div>
   );
 }

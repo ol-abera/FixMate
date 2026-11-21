@@ -4,7 +4,7 @@
  */
 import type {
   AuthUser, BookingRequest, BookingStatus, Conversation, Message, NotificationItem,
-  PricingTier, Provider, Review,
+  PricingTier, Provider, ProviderService, PublicStats, Review, ServiceCategory,
 } from "../data/mockData";
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api";
@@ -116,22 +116,59 @@ const clock = (iso: string) => {
 };
 const stamp = (iso: string) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-function buildTiers(rate: number): PricingTier[] {
-  return [
-    { name: "Essential", price: rate, unit: "/hr", features: ["Diagnostic visit", "Labor included", "Same-day quote"] },
-    { name: "Standard", price: Math.round(rate * 3.2), unit: "/job", features: ["Full service", "Parts up to $50", "7-day warranty"] },
-    { name: "Premium", price: Math.round(rate * 6), unit: "/job", features: ["Priority scheduling", "Premium parts", "12-month warranty"] },
-  ];
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const duration = (mins: number) => (mins % 60 === 0 ? `${mins / 60}h` : mins > 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`);
+
+/** Pricing cards: the provider's real services, or a single hourly card when they have none. */
+function buildTiers(rate: number, minJob: number, services: ProviderService[], instant: boolean): PricingTier[] {
+  const active = services.filter((s) => s.active);
+  if (active.length) {
+    return active.map((s) => ({
+      name: s.title, price: s.price, unit: "", serviceId: s.id,
+      features: [s.categoryName, `About ${duration(s.durationMins)}`, ...(s.description ? [s.description] : [])],
+    }));
+  }
+  return [{
+    name: "Hourly", price: rate, unit: "/hr",
+    features: [`Minimum job $${minJob}`, instant ? "Instant booking" : "Request-based booking", "Final price confirmed on completion"],
+  }];
 }
 
+export function toService(s: any): ProviderService {
+  return {
+    id: String(s.id), title: s.title, description: s.description ?? "", price: Number(s.starting_price),
+    durationMins: s.duration_minutes, categoryId: s.category, categoryName: s.category_name ?? "", active: s.is_active,
+  };
+}
+
+export function toCategory(c: any): ServiceCategory {
+  return {
+    id: c.slug, name: c.name, icon: c.icon || "Wrench", description: c.description ?? "",
+    avgPrice: Math.round(Number(c.avg_price ?? 0)), providerCount: c.provider_count ?? 0,
+  };
+}
+
+export function toStats(d: any): PublicStats {
+  return {
+    verifiedProviders: d.verified_providers, jobsCompleted: d.jobs_completed, avgRating: Number(d.avg_rating),
+    cities: d.cities ?? [], citiesCount: d.cities_count ?? 0,
+    featuredReviews: (d.featured_reviews ?? []).map((r: any) => ({
+      id: String(r.id), author: r.author, avatar: r.avatar || avatarFor(r.author), rating: r.rating, text: r.comment,
+      providerName: r.provider_name, city: r.provider_city ?? "",
+    })),
+  };
+}
+
+export const toReview = (r: any): Review => ({
+  id: String(r.id), author: r.author, avatar: r.avatar || avatarFor(r.author), rating: r.rating,
+  date: timeAgo(r.created_at), text: r.comment,
+});
+
 /* --------------------------------- mappers --------------------------------- */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export function toProvider(p: any): Provider {
   const rate = Number(p.hourly_rate);
-  const reviews: Review[] = (p.reviews ?? []).map((r: any) => ({
-    id: String(r.id), author: r.author, avatar: r.avatar || avatarFor(r.author), rating: r.rating,
-    date: timeAgo(r.created_at), text: r.comment,
-  }));
+  const reviews: Review[] = (p.reviews ?? []).map(toReview);
+  const services: ProviderService[] = (p.services ?? []).map(toService);
   return {
     id: String(p.id), userId: p.user_id, name: p.name, title: p.title,
     avatar: p.avatar || avatarFor(p.name),
@@ -142,7 +179,10 @@ export function toProvider(p: any): Provider {
     verified: p.verified, instantBook: p.instant_book, availableNow: p.available_now,
     yearsExperience: p.years_of_experience, jobsCompleted: p.jobs_completed, responseTimeMins: p.response_time_mins,
     bio: p.bio || `${p.name} is a trusted local ${String(p.title).toLowerCase()}.`,
-    skills: p.skills ?? [], gallery: p.gallery ?? [], tiers: buildTiers(rate), reviews,
+    skills: p.skills ?? [], gallery: p.gallery ?? [], reviews, services,
+    tiers: buildTiers(rate, Number(p.starting_price), services, p.instant_book),
+    portfolio: (p.portfolio ?? []).map((i: any) => ({ id: String(i.id), image: i.image, caption: i.caption ?? "" })),
+    favoritesCount: p.favorites_count, availability: p.availability, verificationStatus: p.verification_status,
   };
 }
 
@@ -156,7 +196,9 @@ export function toBooking(b: any): BookingRequest {
     estimate: Number(b.final_price ?? b.estimated_price), finalPrice: b.final_price == null ? null : Number(b.final_price),
     createdAt: b.created_at,
     timeline: (b.events ?? []).map((e: any) => ({ status: String(e.status).toLowerCase() as BookingStatus, label: e.label, time: stamp(e.created_at) })),
-    canReview: b.can_review, hasReview: b.has_review,
+    canReview: b.can_review, hasReview: b.has_review, customerId: b.customer,
+    serviceId: b.service == null ? undefined : String(b.service),
+    review: b.review ? { id: String(b.review.id), rating: b.review.rating, comment: b.review.comment } : null,
   };
 }
 
@@ -191,6 +233,8 @@ export function toUser(u: any): AuthUser {
     id: u.id, name: u.full_name || u.email, role: String(u.role).toLowerCase() as AuthUser["role"], email: u.email,
     avatar: u.profile_image || avatarFor(u.full_name || u.email),
     providerId: u.provider_id ? String(u.provider_id) : undefined,
+    firstName: u.first_name, lastName: u.last_name, phone: u.phone, location: u.location, bio: u.bio,
+    hasAvatar: !!u.profile_image,
   };
 }
 
@@ -210,6 +254,14 @@ export const api = {
     return toUser(d.user);
   },
   async me(): Promise<AuthUser> { return toUser(await request<any>("/auth/me/")); },
+  async updateMe(data: Record<string, string> | FormData): Promise<AuthUser> {
+    const opts = data instanceof FormData ? { method: "PATCH", form: data } : { method: "PATCH", body: data };
+    return toUser(await request<any>("/auth/me/", opts));
+  },
+
+  // marketplace data
+  async categories(): Promise<ServiceCategory[]> { return (await request<any[]>("/categories/", { auth: false })).map(toCategory); },
+  async stats(): Promise<PublicStats> { return toStats(await request<any>("/dashboard/public/", { auth: false })); },
 
   // providers
   async providers(query: Query): Promise<Page<Provider>> {
@@ -217,6 +269,36 @@ export const api = {
     return { ...d, results: d.results.map(toProvider) };
   },
   async provider(id: string): Promise<Provider> { return toProvider(await request<any>(`/providers/${id}/`)); },
+  async providerReviews(id: string, page: number): Promise<Page<Review>> {
+    const d = await request<Page<any>>(`/providers/${id}/reviews/`, { query: { page, page_size: 10 }, auth: false });
+    return { ...d, results: d.results.map(toReview) };
+  },
+  async myProvider(): Promise<Provider> { return toProvider(await request<any>("/providers/me/")); },
+  async updateMyProvider(data: Record<string, unknown> | FormData): Promise<Provider> {
+    const opts = data instanceof FormData ? { method: "PATCH", form: data } : { method: "PATCH", body: data };
+    return toProvider(await request<any>("/providers/me/", opts));
+  },
+  addPortfolioImage(file: File, caption = "") {
+    const form = new FormData();
+    form.append("image", file);
+    form.append("caption", caption);
+    return request("/providers/me/portfolio/", { method: "POST", form });
+  },
+  deletePortfolioImage(id: string) { return request(`/providers/me/portfolio/${id}/`, { method: "DELETE" }); },
+
+  // services (provider-owned)
+  async myServices(): Promise<ProviderService[]> {
+    const d = await request<Page<any>>("/services/", { query: { mine: 1, page_size: 100 } });
+    return d.results.map(toService);
+  },
+  async saveService(s: Partial<ProviderService>): Promise<ProviderService> {
+    const body = {
+      title: s.title, description: s.description, starting_price: s.price, duration_minutes: s.durationMins,
+      category: s.categoryId, is_active: s.active,
+    };
+    return toService(await request<any>(s.id ? `/services/${s.id}/` : "/services/", { method: s.id ? "PATCH" : "POST", body }));
+  },
+  deleteService(id: string) { return request(`/services/${id}/`, { method: "DELETE" }); },
 
   // bookings
   async bookings(): Promise<BookingRequest[]> {
@@ -226,14 +308,19 @@ export const api = {
   async createBooking(body: Record<string, unknown>): Promise<BookingRequest> {
     return toBooking(await request<any>("/bookings/", { method: "POST", body }));
   },
-  async bookingAction(id: string, action: "accept" | "decline" | "start" | "complete" | "cancel"): Promise<BookingRequest> {
-    return toBooking(await request<any>(`/bookings/${id}/${action}/`, { method: "POST" }));
+  async bookingAction(id: string, action: "accept" | "decline" | "start" | "complete" | "cancel", finalPrice?: number): Promise<BookingRequest> {
+    const body = finalPrice !== undefined ? { final_price: finalPrice } : undefined;
+    return toBooking(await request<any>(`/bookings/${id}/${action}/`, { method: "POST", body }));
   },
 
   // reviews
   submitReview(booking: string, rating: number, comment: string) {
     return request("/reviews/", { method: "POST", body: { booking: Number(booking), rating, comment } });
   },
+  updateReview(id: string, rating: number, comment: string) {
+    return request(`/reviews/${id}/`, { method: "PATCH", body: { rating, comment } });
+  },
+  deleteReview(id: string) { return request(`/reviews/${id}/`, { method: "DELETE" }); },
 
   // favourites
   async favorites(): Promise<Provider[]> { return (await request<any[]>("/favorites/")).map(toProvider); },
@@ -246,8 +333,9 @@ export const api = {
     return d.results.map(toConversation);
   },
   async conversation(id: string): Promise<Conversation> { return toConversation(await request<any>(`/conversations/${id}/`)); },
-  async startConversation(providerId: string): Promise<Conversation> {
-    return toConversation(await request<any>("/conversations/", { method: "POST", body: { provider: Number(providerId) } }));
+  async startConversation(target: { provider: string } | { customer: number }): Promise<Conversation> {
+    const body = "provider" in target ? { provider: Number(target.provider) } : { customer: target.customer };
+    return toConversation(await request<any>("/conversations/", { method: "POST", body }));
   },
   async sendMessage(conversationId: string, text: string, file?: File): Promise<Message> {
     if (file) {

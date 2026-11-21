@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, ArrowRight, CheckCircle, Clock, MapPin, Phone,
@@ -9,7 +9,6 @@ import {
 import { cn } from "../lib/utils";
 import { useApp, useProviderById } from "../context/AppContext";
 import { errorMessage } from "../services/api";
-import { CATEGORIES, CITIES } from "../data/mockData";
 import { toast } from "sonner";
 
 const STEPS = ["Service", "Schedule", "Contact", "Address", "Photos", "Review"];
@@ -32,7 +31,8 @@ const SLOTS = ["08:00 - 10:00", "10:00 - 12:00", "12:00 - 14:00", "14:00 - 16:00
 export function BookingWizardPage() {
   const { providerId } = useParams();
   const navigate = useNavigate();
-  const { addBooking, user } = useApp();
+  const { addBooking, user, categories, cities } = useApp();
+  const [sp] = useSearchParams();
   const { provider, loading } = useProviderById(providerId);
   const [submitting, setSubmitting] = useState(false);
 
@@ -40,6 +40,7 @@ export function BookingWizardPage() {
   const dates = useMemo(() => nextDates(7), []);
   const [form, setForm] = useState({
     categoryId: provider?.categoryIds[0] ?? "plumbing",
+    serviceId: sp.get("service") ?? "",
     serviceName: "",
     description: "",
     date: dates[0].iso,
@@ -48,15 +49,25 @@ export function BookingWizardPage() {
     phone: "",
     email: user?.email ?? "",
     street: "",
-    city: provider?.city ?? CITIES[0],
+    city: provider?.city ?? "",
     notes: "",
     photos: [] as string[],
   });
 
+  const services = useMemo(() => (provider?.services ?? []).filter((s) => s.active), [provider?.services]);
   useEffect(() => {
     if (!provider) return;
-    setForm((f) => ({ ...f, categoryId: provider.categoryIds[0] ?? f.categoryId, city: provider.city || f.city }));
-  }, [provider?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setForm((f) => {
+      const wanted = f.serviceId || sp.get("service") || "";
+      const svc = services.find((s) => s.id === wanted);
+      return {
+        ...f, city: f.city || provider.city,
+        serviceId: svc ? svc.id : services.length ? "" : wanted,
+        categoryId: svc?.categoryId ?? (provider.categoryIds[0] || f.categoryId),
+        serviceName: f.serviceName || svc?.title || "",
+      };
+    });
+  }, [provider?.id, services.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (user) setForm((f) => ({ ...f, name: f.name || user.name, email: f.email || user.email }));
@@ -85,7 +96,17 @@ export function BookingWizardPage() {
   }
 
   const set = (k: string, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
-  const estimate = Math.max(provider.hourlyRate * 2, provider.minJobPrice);
+  const chosen = services.find((s) => s.id === form.serviceId);
+  // mirrors the server-side estimate in bookings/serializers.py
+  const estimate = chosen ? chosen.price : Math.max(provider.hourlyRate * 2, provider.minJobPrice);
+  const pickService = (id: string) => {
+    const svc = services.find((s) => s.id === id);
+    setForm((f) => ({
+      ...f, serviceId: id,
+      categoryId: svc?.categoryId ?? f.categoryId,
+      serviceName: svc && (!f.serviceName || services.some((s) => s.title === f.serviceName)) ? svc.title : f.serviceName,
+    }));
+  };
   const canNext = [
     !!form.serviceName && !!form.description,
     !!form.date && !!form.timeSlot,
@@ -100,6 +121,7 @@ export function BookingWizardPage() {
     try {
       await addBooking({
         providerId: provider.id,
+        serviceId: form.serviceId || undefined,
         categoryId: form.categoryId,
         serviceName: form.serviceName,
         description: form.description,
@@ -151,10 +173,19 @@ export function BookingWizardPage() {
             {step === 0 && (
               <div className="space-y-4">
                 <h2 className="font-bold text-slate-900">What do you need done?</h2>
+                {services.length > 0 && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-600">Service</label>
+                    <select value={form.serviceId} onChange={(e) => pickService(e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200">
+                      <option value="">Something else (hourly rate)</option>
+                      {services.map((s) => <option key={s.id} value={s.id}>{s.title} · from ${s.price}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-600">Category</label>
-                  <select value={form.categoryId} onChange={(e) => set("categoryId", e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200">
-                    {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <select value={form.categoryId} disabled={!!chosen} onChange={(e) => set("categoryId", e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-slate-50 disabled:text-slate-500">
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -215,9 +246,8 @@ export function BookingWizardPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-600">City</label>
-                  <select value={form.city} onChange={(e) => set("city", e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200">
-                    {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <input list="booking-cities" value={form.city} onChange={(e) => set("city", e.target.value)} placeholder="Austin" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-200" />
+                  <datalist id="booking-cities">{cities.map((c) => <option key={c} value={c} />)}</datalist>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-600">Access notes (optional)</label>
@@ -247,8 +277,8 @@ export function BookingWizardPage() {
                 <h2 className="font-bold text-slate-900">Review & confirm</h2>
                 <div className="rounded-xl bg-slate-50 p-4 text-sm">
                   {[
-                    ["Service", form.serviceName],
-                    ["Category", CATEGORIES.find((c) => c.id === form.categoryId)?.name],
+                    ["Service", chosen && chosen.title !== form.serviceName ? `${form.serviceName} (${chosen.title})` : form.serviceName],
+                    ["Category", categories.find((c) => c.id === form.categoryId)?.name],
                     ["Date", `${form.date} · ${form.timeSlot}`],
                     ["Address", `${form.street}, ${form.city}`],
                     ["Contact", `${form.name} · ${form.phone}`],

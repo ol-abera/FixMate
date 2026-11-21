@@ -2,8 +2,9 @@ from collections import OrderedDict
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -128,6 +129,32 @@ class ProviderDashboardView(APIView):
                 mine.filter(status__in=["ACCEPTED", "IN_PROGRESS"], scheduled_date__gte=today).order_by("scheduled_date", "scheduled_time"),
                 request, 10),
             "recent_reviews": ReviewSerializer(reviews, many=True, context=ctx).data,
+        })
+
+
+class PublicStatsView(APIView):
+    """Marketplace numbers and featured reviews for the public marketing pages."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        verified = ProviderProfile.objects.filter(verification_status="VERIFIED")
+        cities = sorted({c.strip() for c in verified.values_list("location", flat=True) if c and c.strip()})
+        published = Review.objects.filter(is_published=True, provider__verification_status="VERIFIED")
+        featured = (
+            published.filter(rating__gte=4).exclude(comment="")
+            .select_related("customer", "provider__user").order_by("-rating", "-created_at")[:3]
+        )
+        ctx = {"request": request}
+        return Response({
+            "verified_providers": verified.count(),
+            "jobs_completed": Booking.objects.filter(status="COMPLETED").count(),
+            "avg_rating": round(published.aggregate(a=Avg("rating"))["a"] or 0, 1),
+            "cities": cities,
+            "cities_count": len(cities),
+            "featured_reviews": [
+                {**ReviewSerializer(r, context=ctx).data, "provider_city": r.provider.location} for r in featured
+            ],
         })
 
 

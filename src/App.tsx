@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import { HomePage, ExplorePage, ProviderProfilePage } from "./pages/Browse";
 import { BookingWizardPage } from "./pages/Booking";
 import { CustomerDashboard, FavoritesPage, ProviderDashboard } from "./pages/Dashboards";
+import { AccountSettingsPage, ProviderSettingsPage } from "./pages/Settings";
 import { MessagesPage, NotificationsPage, AuthPage, BecomeProviderPage, AboutPage, HelpPage } from "./pages/Misc";
 
 function ScrollToTop() {
@@ -41,6 +42,8 @@ export default function App() {
             <Route path="/book/:providerId" element={<BookingWizardPage />} />
             <Route path="/customer-dashboard" element={<CustomerDashboard />} />
             <Route path="/provider-dashboard" element={<ProviderDashboard />} />
+            <Route path="/provider-dashboard/settings" element={<ProviderSettingsPage />} />
+            <Route path="/account" element={<AccountSettingsPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/become-provider" element={<BecomeProviderPage />} />

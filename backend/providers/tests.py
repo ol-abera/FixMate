@@ -95,4 +95,6 @@ class ProviderTests(TestCase):
         r = client_for().get(f"/api/providers/{p.id}/")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(r.data["services"]), 1)
+        self.assertEqual(r.data["favorites_count"], 0)
+        self.assertEqual(r.data["portfolio"], [])
         self.assertEqual(r.data["gallery"], [])
