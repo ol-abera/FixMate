@@ -61,7 +61,7 @@ interface AppContextValue extends State {
   loadConversation: (id: string) => Promise<void>;
   refreshConversations: () => Promise<void>;
   sendMessage: (conversationId: string, text: string, file?: File) => Promise<void>;
-  startConversation: (provider: Provider) => Promise<string>;
+  startConversation: (providerId: string) => Promise<string>;
   markAllRead: () => void;
   markRead: (id: string) => void;
   clearNotifications: () => void;
@@ -240,10 +240,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) { console.error("conversation", e); }
   }, [patch]);
 
-  const startConversation = useCallback(async (provider: Provider) => {
+  const startConversation = useCallback(async (providerId: string) => {
     if (!ref.current.user) throw new Error("Sign in to message a pro");
     if (ref.current.user.role !== "customer") throw new Error("Only customers can start a conversation");
-    const c = await api.startConversation(provider.id);
+    const c = await api.startConversation(providerId);
     patch((s) => ({
       conversations: s.conversations.some((x) => x.id === c.id) ? s.conversations : [c, ...s.conversations],
     }));
