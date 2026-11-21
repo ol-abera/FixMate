@@ -7,7 +7,8 @@ import { HomePage, ExplorePage, ProviderProfilePage } from "./pages/Browse";
 import { BookingWizardPage } from "./pages/Booking";
 import { CustomerDashboard, FavoritesPage, ProviderDashboard } from "./pages/Dashboards";
 import { AccountSettingsPage, ProviderSettingsPage } from "./pages/Settings";
-import { MessagesPage, NotificationsPage, AuthPage, BecomeProviderPage, AboutPage, HelpPage } from "./pages/Misc";
+import { RequireAuth } from "./components/RequireAuth";
+import { MessagesPage, NotificationsPage, AuthPage, BecomeProviderPage, AboutPage, HelpPage, ForgotPasswordPage, ResetPasswordPage } from "./pages/Misc";
 
 function ScrollToTop() {
   const { pathname, hash } = useLocation();
@@ -39,18 +40,20 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/explore" element={<ExplorePage />} />
             <Route path="/providers/:id" element={<ProviderProfilePage />} />
-            <Route path="/book/:providerId" element={<BookingWizardPage />} />
-            <Route path="/customer-dashboard" element={<CustomerDashboard />} />
-            <Route path="/provider-dashboard" element={<ProviderDashboard />} />
-            <Route path="/provider-dashboard/settings" element={<ProviderSettingsPage />} />
-            <Route path="/account" element={<AccountSettingsPage />} />
-            <Route path="/messages" element={<MessagesPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/book/:providerId" element={<RequireAuth><BookingWizardPage /></RequireAuth>} />
+            <Route path="/customer-dashboard" element={<RequireAuth roles={["customer"]}><CustomerDashboard /></RequireAuth>} />
+            <Route path="/provider-dashboard" element={<RequireAuth roles={["provider"]}><ProviderDashboard /></RequireAuth>} />
+            <Route path="/provider-dashboard/settings" element={<RequireAuth roles={["provider"]}><ProviderSettingsPage /></RequireAuth>} />
+            <Route path="/account" element={<RequireAuth><AccountSettingsPage /></RequireAuth>} />
+            <Route path="/messages" element={<RequireAuth><MessagesPage /></RequireAuth>} />
+            <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
             <Route path="/become-provider" element={<BecomeProviderPage />} />
             <Route path="/auth" element={<AuthPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/help" element={<HelpPage />} />
-            <Route path="/favorites" element={<FavoritesPage />} />
+            <Route path="/favorites" element={<RequireAuth roles={["customer"]}><FavoritesPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>

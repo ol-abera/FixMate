@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ChatCircle, PaperPlaneRight, Paperclip, MagnifyingGlass, Bell, CheckCircle,
@@ -8,16 +8,16 @@ import {
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
-import { errorMessage } from "../services/api";
+import { api, errorMessage } from "../services/api";
 import { formatCount } from "../lib/format";
 import { Avatar, EmptyState, SectionHeading } from "../components/Layout";
-import { notificationLink } from "../lib/links";
+import { dashboardPath, notificationLink, safeNext } from "../lib/links";
 import { toast } from "sonner";
 
 /* -------------------------------- Messages --------------------------------- */
 
 export function MessagesPage() {
-  const { conversations, sendMessage, user, ready, loadConversation } = useApp();
+  const { conversations, sendMessage, user, loadConversation } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [sp, setSp] = useSearchParams();
   const [activeId, setActiveId] = useState(sp.get("c") ?? conversations[0]?.id ?? "");
@@ -53,8 +53,6 @@ export function MessagesPage() {
   };
 
   const open = (id: string) => { setActiveId(id); setSp({ c: id }); setMobileOpen(true); };
-
-  if (ready && !user) return <Navigate to="/auth" replace />;
 
   const send = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,10 +132,9 @@ const NOTIF_STYLE = {
 };
 
 export function NotificationsPage() {
-  const { notifications, markAllRead, markRead, clearNotifications, user, ready } = useApp();
+  const { notifications, markAllRead, markRead, clearNotifications, user } = useApp();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "unread">("all");
-  if (ready && !user) return <Navigate to="/auth" replace />;
   const list = filter === "unread" ? notifications.filter((n) => !n.read) : notifications;
 
   return (
@@ -172,6 +169,8 @@ export function NotificationsPage() {
 
 export function AuthPage() {
   const navigate = useNavigate();
+  const [sp] = useSearchParams();
+  const next = safeNext(sp.get("next"));
   const { login, register } = useApp();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [role, setRole] = useState<"customer" | "provider">("customer");
@@ -197,7 +196,7 @@ export function AuthPage() {
         u = await register({ email, password, firstName: first || "Customer", lastName: rest.join(" "), role: "customer" });
       }
       toast.success(mode === "login" ? "Welcome back!" : "Account created!");
-      navigate(u.role === "provider" ? "/provider-dashboard" : "/customer-dashboard");
+      navigate(next ?? dashboardPath(u), { replace: true });
     } catch (err) {
       toast.error(errorMessage(err, "Could not sign in"));
     } finally {
@@ -239,6 +238,11 @@ export function AuthPage() {
           {mode === "signup" && <Field icon={IdentificationCard} label="Full name" ph="Jane Doe" value={name} onChange={setName} />}
           <Field icon={Envelope} label="Email" ph="you@email.com" type="email" value={email} onChange={setEmail} />
           <Field icon={ShieldCheck} label="Password" ph="••••••••" type="password" value={password} onChange={setPassword} />
+          {mode === "login" && (
+            <div className="-mt-2 text-right">
+              <Link to={`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`} className="text-xs font-semibold text-emerald-700 hover:underline">Forgot password?</Link>
+            </div>
+          )}
           <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-3 disabled:opacity-60 text-sm font-bold text-white transition hover:bg-emerald-700 active:scale-95">
             {mode === "login" ? "Sign in" : "Create account"} <ArrowRight size={16} />
           </button>
@@ -246,6 +250,106 @@ export function AuthPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+function AuthCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return (
+    <div className="mx-auto max-w-md px-4 py-16 sm:px-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><ShieldCheck size={22} /></span>
+        <h1 className="mt-4 text-xl font-extrabold text-slate-900">{title}</h1>
+        <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+        <div className="mt-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+export function ForgotPasswordPage() {
+  const [sp] = useSearchParams();
+  const [email, setEmail] = useState(sp.get("email") ?? "");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/.+@.+\..+/.test(email)) { toast.error("Enter the email you signed up with"); return; }
+    setBusy(true);
+    try {
+      await api.requestPasswordReset(email);
+      setSent(true);
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not send reset email"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <AuthCard title="Check your inbox" subtitle={`If an account exists for ${email}, we've sent a link to reset your password. It expires in a few days and can only be used once.`}>
+        <Link to="/auth" className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Back to sign in</Link>
+      </AuthCard>
+    );
+  }
+  return (
+    <AuthCard title="Reset your password" subtitle="Enter your account email and we'll send you a reset link.">
+      <form onSubmit={submit} className="space-y-4">
+        <Field icon={Envelope} label="Email" ph="you@email.com" type="email" value={email} onChange={setEmail} />
+        <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 active:scale-95 disabled:opacity-60">
+          Send reset link <ArrowRight size={16} />
+        </button>
+        <p className="text-center text-xs text-slate-500">Remembered it? <Link to="/auth" className="font-semibold text-emerald-700 hover:underline">Sign in</Link></p>
+      </form>
+    </AuthCard>
+  );
+}
+
+export function ResetPasswordPage() {
+  const navigate = useNavigate();
+  const [sp] = useSearchParams();
+  const uid = sp.get("uid") ?? "";
+  const token = sp.get("token") ?? "";
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (!uid || !token) {
+    return (
+      <AuthCard title="Invalid reset link" subtitle="This link is incomplete. Request a new one and use the link from the latest email.">
+        <Link to="/forgot-password" className="flex w-full items-center justify-center rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-700">Request a new link</Link>
+      </AuthCard>
+    );
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8) { toast.error("Use at least 8 characters"); return; }
+    if (password !== confirm) { toast.error("Passwords don't match"); return; }
+    setBusy(true);
+    try {
+      await api.confirmPasswordReset(uid, token, password);
+      toast.success("Password updated", { description: "Sign in with your new password." });
+      navigate("/auth", { replace: true });
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not reset password"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AuthCard title="Choose a new password" subtitle="You'll be signed out on all other devices.">
+      <form onSubmit={submit} className="space-y-4">
+        <Field icon={ShieldCheck} label="New password (8+ characters)" ph="••••••••" type="password" value={password} onChange={setPassword} />
+        <Field icon={ShieldCheck} label="Confirm new password" ph="••••••••" type="password" value={confirm} onChange={setConfirm} />
+        <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 active:scale-95 disabled:opacity-60">
+          Update password <ArrowRight size={16} />
+        </button>
+        <p className="text-center text-xs text-slate-500">Link expired? <Link to="/forgot-password" className="font-semibold text-emerald-700 hover:underline">Request a new one</Link></p>
+      </form>
+    </AuthCard>
   );
 }
 

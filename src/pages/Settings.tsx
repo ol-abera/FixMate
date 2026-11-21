@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
-  Camera, CheckCircle, FloppyDisk, PencilSimple, Plus, Trash, UploadSimple, User as UserIcon, X,
+  Camera, CheckCircle, FloppyDisk, Key, PencilSimple, Plus, Trash, UploadSimple, User as UserIcon, X,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -59,8 +59,47 @@ function useImagePicker(onPick: (f: File) => void) {
 
 /* ----------------------------- Account settings ---------------------------- */
 
+function PasswordCard() {
+  const [f, setF] = useState({ current: "", next: "", confirm: "" });
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (f.next.length < 8) { toast.error("New password must be at least 8 characters"); return; }
+    if (f.next !== f.confirm) { toast.error("New passwords don't match"); return; }
+    setBusy(true);
+    try {
+      await api.changePassword(f.current, f.next);
+      setF({ current: "", next: "", confirm: "" });
+      toast.success("Password changed", { description: "Other devices have been signed out." });
+    } catch (err) { toast.error(errorMessage(err)); } finally { setBusy(false); }
+  };
+  return (
+    <Card title="Password" subtitle="Changing it signs you out everywhere else.">
+      <form onSubmit={submit} className="space-y-4">
+        <Labeled label="Current password">
+          <input type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} className={inputCls} />
+        </Labeled>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Labeled label="New password" hint="At least 8 characters, not too common.">
+            <input type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} className={inputCls} />
+          </Labeled>
+          <Labeled label="Confirm new password">
+            <input type="password" autoComplete="new-password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} className={inputCls} />
+          </Labeled>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <Link to="/forgot-password" className="text-xs font-semibold text-emerald-700 hover:underline">Forgot your current password?</Link>
+          <button type="submit" disabled={busy || !f.current} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-95 disabled:opacity-60">
+            <Key size={16} /> {busy ? "Updating…" : "Update password"}
+          </button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 export function AccountSettingsPage() {
-  const { user, ready, setUser } = useApp();
+  const { user, setUser } = useApp();
   const [f, setF] = useState({ firstName: "", lastName: "", phone: "", location: "", bio: "" });
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -79,7 +118,6 @@ export function AccountSettingsPage() {
     } catch (e) { toast.error(errorMessage(e)); } finally { setUploading(false); }
   });
 
-  if (ready && !user) return <Navigate to="/auth" replace />;
   if (!user) return null;
 
   const set = (k: keyof typeof f, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -119,6 +157,7 @@ export function AccountSettingsPage() {
           <div className="flex justify-end"><SaveButton busy={busy} /></div>
         </form>
       </Card>
+      <PasswordCard />
       {user.role === "provider" && (
         <p className="text-center text-sm text-slate-500">Looking for your pro profile, services or portfolio? <Link to="/provider-dashboard/settings" className="font-semibold text-emerald-700 hover:underline">Open pro settings</Link></p>
       )}
@@ -144,7 +183,7 @@ const toForm = (p: Provider): ProfileForm => ({
 });
 
 export function ProviderSettingsPage() {
-  const { user, ready, categories, cities } = useApp();
+  const { user, categories, cities } = useApp();
   const [profile, setProfile] = useState<Provider | null>(null);
   const [form, setForm] = useState<ProfileForm | null>(null);
   const [services, setServices] = useState<ProviderService[]>([]);
@@ -177,7 +216,6 @@ export function ProviderSettingsPage() {
     } catch (e) { toast.error(errorMessage(e)); } finally { setUploading(null); }
   });
 
-  if (ready && !isProvider) return <Navigate to="/auth" replace />;
   if (!profile || !form) return <div className="mx-auto max-w-3xl px-4 py-24 text-center text-slate-500">Loading…</div>;
 
   const set = <K extends keyof ProfileForm>(k: K, v: ProfileForm[K]) => setForm((s) => (s ? { ...s, [k]: v } : s));
