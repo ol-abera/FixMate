@@ -199,6 +199,8 @@ export function toBooking(b: any): BookingRequest {
     canReview: b.can_review, hasReview: b.has_review, customerId: b.customer,
     serviceId: b.service == null ? undefined : String(b.service),
     review: b.review ? { id: String(b.review.id), rating: b.review.rating, comment: b.review.comment } : null,
+    notes: b.notes ?? "",
+    photos: (b.photos ?? []).map((p: any) => ({ id: String(p.id), url: p.image })),
   };
 }
 
@@ -252,6 +254,21 @@ export const api = {
     const d = await request<any>("/auth/register/", { method: "POST", body: input, auth: false });
     tokens.set(d.access, d.refresh);
     return toUser(d.user);
+  },
+  async logout() {
+    const refresh = tokens.refresh;
+    tokens.clear();
+    if (refresh) await request("/auth/logout/", { method: "POST", body: { refresh }, auth: false }).catch(() => {});
+  },
+  async changePassword(currentPassword: string, newPassword: string) {
+    const d = await request<any>("/auth/password/change/", { method: "POST", body: { current_password: currentPassword, new_password: newPassword } });
+    tokens.set(d.access, d.refresh);
+  },
+  requestPasswordReset(email: string) {
+    return request<{ detail: string }>("/auth/password/reset/", { method: "POST", body: { email }, auth: false });
+  },
+  confirmPasswordReset(uid: string, token: string, newPassword: string) {
+    return request<{ detail: string }>("/auth/password/reset/confirm/", { method: "POST", body: { uid, token, new_password: newPassword }, auth: false });
   },
   async me(): Promise<AuthUser> { return toUser(await request<any>("/auth/me/")); },
   async updateMe(data: Record<string, string> | FormData): Promise<AuthUser> {
@@ -308,6 +325,15 @@ export const api = {
   async createBooking(body: Record<string, unknown>): Promise<BookingRequest> {
     return toBooking(await request<any>("/bookings/", { method: "POST", body }));
   },
+  busySlots(providerId: string) {
+    return request<{ date: string; time_slot: string }[]>("/bookings/busy/", { query: { provider: providerId }, auth: false });
+  },
+  addBookingPhoto(id: string, file: File) {
+    const form = new FormData();
+    form.append("image", file);
+    return request(`/bookings/${id}/photos/`, { method: "POST", form });
+  },
+  deleteBookingPhoto(id: string, photoId: string) { return request(`/bookings/${id}/photos/${photoId}/`, { method: "DELETE" }); },
   async bookingAction(id: string, action: "accept" | "decline" | "start" | "complete" | "cancel", finalPrice?: number): Promise<BookingRequest> {
     const body = finalPrice !== undefined ? { final_price: finalPrice } : undefined;
     return toBooking(await request<any>(`/bookings/${id}/${action}/`, { method: "POST", body }));

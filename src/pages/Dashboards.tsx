@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import {
   House, CurrencyDollar, TrendUp, Star, Calendar, CheckCircle, X, ChatCircle,
   Wrench, Clock, Users, Gear, MapPin, ArrowRight, SealCheck, Bell, Trash, Phone, Warning,
+  Note, Paperclip,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
@@ -112,6 +113,60 @@ function CompleteDialog({ booking, onClose }: { booking: BookingRequest; onClose
   );
 }
 
+function JobExtras({ booking, editable }: { booking: BookingRequest; editable?: boolean }) {
+  const { refreshBookings } = useApp();
+  const input = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const photos = booking.photos ?? [];
+  const canAdd = editable && ACTIVE_STATUSES.includes(booking.status) && photos.length < 6;
+  if (!booking.notes && photos.length === 0 && !canAdd) return null;
+
+  const upload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploading(true);
+    try {
+      for (const f of Array.from(files).slice(0, 6 - photos.length)) await api.addBookingPhoto(booking.id, f);
+    } catch (e) {
+      toast.error(errorMessage(e, "Could not upload photo"));
+    } finally {
+      setUploading(false);
+      await refreshBookings();
+    }
+  };
+  const remove = async (id: string) => {
+    try { await api.deleteBookingPhoto(booking.id, id); } catch (e) { toast.error(errorMessage(e)); }
+    await refreshBookings();
+  };
+
+  return (
+    <div className="mt-3 space-y-2">
+      {booking.notes && (
+        <p className="flex items-start gap-1.5 rounded-lg bg-amber-50/70 px-3 py-2 text-xs text-amber-900"><Note size={14} className="mt-0.5 shrink-0" /> {booking.notes}</p>
+      )}
+      {(photos.length > 0 || canAdd) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {photos.map((p, i) => (
+            <div key={p.id} className="group relative">
+              <a href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={`Job photo ${i + 1}`} className="h-14 w-14 rounded-lg border border-slate-200 object-cover" /></a>
+              {editable && ACTIVE_STATUSES.includes(booking.status) && (
+                <button onClick={() => remove(p.id)} aria-label={`Remove photo ${i + 1}`} className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 place-items-center rounded-full bg-white text-rose-600 shadow group-hover:grid"><X size={11} weight="bold" /></button>
+              )}
+            </div>
+          ))}
+          {canAdd && (
+            <>
+              <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
+              <button onClick={() => input.current?.click()} disabled={uploading} className="grid h-14 w-14 place-items-center rounded-lg border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-600 disabled:opacity-50" aria-label="Add photos">
+                <Paperclip size={16} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatCard({ icon: Icon, label, value, trend, accent }: { icon: typeof House; label: string; value: string; trend?: string; accent?: string }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -128,11 +183,10 @@ function StatCard({ icon: Icon, label, value, trend, accent }: { icon: typeof Ho
 /* --------------------------- Customer dashboard ---------------------------- */
 
 export function CustomerDashboard() {
-  const { bookings, user, favorites, providers, ready, startConversation, getCategory, updateBookingStatus } = useApp();
+  const { bookings, user, favorites, providers, startConversation, getCategory, updateBookingStatus } = useApp();
   const navigate = useNavigate();
   const [reviewing, setReviewing] = useState<BookingRequest | null>(null);
   const [confirm, setConfirm] = useState<{ booking: BookingRequest; action: "cancelled" | "completed" } | null>(null);
-  if (ready && (!user || user.role !== "customer")) return <Navigate to="/auth" replace />;
   const mine = bookings; // already scoped to the signed-in customer by the API
   const favProviders = providers.filter((p) => favorites.includes(p.id));
   const completedJobs = mine.filter((b) => b.status === "completed");
@@ -181,6 +235,7 @@ export function CustomerDashboard() {
                   <span className="inline-flex items-center gap-1"><MapPin size={14} /> {b.address}</span>
                   <span className="inline-flex items-center gap-1 font-semibold text-slate-700"><CurrencyDollar size={14} /> ${b.estimate}{b.finalPrice == null && b.status !== "completed" ? " est." : ""}</span>
                 </div>
+                <JobExtras booking={b} editable />
                 <div className="mt-4 border-t border-slate-100 pt-3">
                   <div className="flex items-center justify-between">
                     {b.timeline.map((t, i) => (
@@ -255,8 +310,7 @@ export function CustomerDashboard() {
 /* -------------------------------- Favorites -------------------------------- */
 
 export function FavoritesPage() {
-  const { user, ready, favorites, providers } = useApp();
-  if (ready && (!user || user.role !== "customer")) return <Navigate to="/auth" replace />;
+  const { favorites, providers } = useApp();
   const saved = providers.filter((p) => favorites.includes(p.id));
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -275,7 +329,7 @@ export function FavoritesPage() {
 /* --------------------------- Provider dashboard ---------------------------- */
 
 export function ProviderDashboard() {
-  const { bookings, updateBookingStatus, user, providers, ready, startConversationWithCustomer } = useApp();
+  const { bookings, updateBookingStatus, user, providers, startConversationWithCustomer } = useApp();
   const navigate = useNavigate();
   const mine = bookings; // already scoped to the signed-in provider by the API
   const [dash, setDash] = useState<ProviderDash | null>(null);
@@ -289,7 +343,6 @@ export function ProviderDashboard() {
     if (user?.role !== "provider") return;
     api.providerDashboard().then(setDash).catch((e) => console.error(errorMessage(e)));
   }, [user?.id, user?.role, bookings]);
-  if (ready && (!user || user.role !== "provider")) return <Navigate to="/auth" replace />;
   const earningsData = (dash?.earnings.daily ?? []).map((d) => ({ day: d.day, amt: Number(d.amount) }));
   const pending = mine.filter((b) => b.status === "pending");
   const active = mine.filter((b) => b.status === "accepted" || b.status === "in_progress");
@@ -348,6 +401,7 @@ export function ProviderDashboard() {
                       <p className="font-semibold text-slate-900">{b.serviceName}</p>
                       <p className="text-sm text-slate-500">{b.customerName} · {b.date} {b.timeSlot}</p>
                       <p className="mt-1 text-sm text-slate-500">{b.description}</p>
+                      <JobExtras booking={b} />
                     </div>
                     <div className="text-right"><p className="text-lg font-extrabold text-emerald-700">${b.estimate}</p><p className="text-xs text-slate-400">estimate</p></div>
                   </div>
@@ -373,6 +427,7 @@ export function ProviderDashboard() {
                       <span className="inline-flex items-center gap-1"><Calendar size={13} /> {b.date} · {b.timeSlot}</span>
                       {b.contact && <span className="inline-flex items-center gap-1"><Phone size={13} /> {b.contact}</span>}
                     </p>
+                    <JobExtras booking={b} />
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={b.status} />

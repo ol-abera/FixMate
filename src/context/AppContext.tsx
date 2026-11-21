@@ -33,6 +33,8 @@ export interface NewBooking {
   contactPhone: string;
   contactEmail: string;
   serviceId?: string;
+  notes?: string;
+  photos?: File[];
 }
 
 export interface RegisterInput {
@@ -200,7 +202,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [patch, loadPrivate]);
 
   const logout = useCallback(() => {
-    tokens.clear();
+    void api.logout();
     setState((s) => ({ ...empty, providers: s.providers }));
   }, []);
 
@@ -228,11 +230,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       category: b.categoryId || undefined, title: b.serviceName,
       description: b.description, scheduled_date: b.date, time_slot: b.timeSlot, location: b.address,
       contact_name: b.contactName, contact_phone: b.contactPhone, contact_email: b.contactEmail,
+      notes: b.notes || undefined,
     });
     patch((s) => ({ bookings: upsert(s.bookings, created) }));
+    if (b.photos?.length) {
+      const results = await Promise.allSettled(b.photos.map((f) => api.addBookingPhoto(created.id, f)));
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (failed) toast.warning("Some photos could not be uploaded", { description: errorMessage(failed.reason) });
+      await refreshBookings();
+    }
     refreshNotifications();
     return created;
-  }, [patch, refreshNotifications]);
+  }, [patch, refreshBookings, refreshNotifications]);
 
   const updateBookingStatus = useCallback(async (id: string, status: BookingStatus, finalPrice?: number) => {
     const action = ACTION_FOR[status];
