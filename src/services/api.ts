@@ -181,6 +181,8 @@ export function toNotification(n: any): NotificationItem {
     id: String(n.id),
     type: t === "NEW_MESSAGE" ? "message" : t === "PROVIDER_VERIFICATION" ? "system" : "booking",
     title: n.title, body: n.message, time: timeAgo(n.created_at), read: n.is_read,
+    bookingId: n.data?.booking_id != null ? String(n.data.booking_id) : undefined,
+    conversationId: n.data?.conversation_id != null ? String(n.data.conversation_id) : undefined,
   };
 }
 

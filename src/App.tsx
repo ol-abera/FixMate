@@ -5,12 +5,26 @@ import { AppProvider } from "./context/AppContext";
 import { Layout } from "./components/Layout";
 import { HomePage, ExplorePage, ProviderProfilePage } from "./pages/Browse";
 import { BookingWizardPage } from "./pages/Booking";
-import { CustomerDashboard, ProviderDashboard } from "./pages/Dashboards";
-import { MessagesPage, NotificationsPage, AuthPage, BecomeProviderPage, AboutPage } from "./pages/Misc";
+import { CustomerDashboard, FavoritesPage, ProviderDashboard } from "./pages/Dashboards";
+import { MessagesPage, NotificationsPage, AuthPage, BecomeProviderPage, AboutPage, HelpPage } from "./pages/Misc";
 
 function ScrollToTop() {
-  const { pathname } = useLocation();
-  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    if (!hash) { window.scrollTo(0, 0); return; }
+    // Anchored content (e.g. a booking card) may render only after data loads, so retry briefly.
+    let tries = 0;
+    const t = window.setInterval(() => {
+      const el = document.getElementById(decodeURIComponent(hash.slice(1)));
+      if (el) {
+        el.scrollIntoView({ block: "center" });
+        el.classList.add("ring-2", "ring-emerald-400");
+        window.setTimeout(() => el.classList.remove("ring-2", "ring-emerald-400"), 2000);
+      }
+      if (el || ++tries > 20) clearInterval(t);
+    }, 150);
+    return () => clearInterval(t);
+  }, [pathname, hash]);
   return null;
 }
 
@@ -32,6 +46,8 @@ export default function App() {
             <Route path="/become-provider" element={<BecomeProviderPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/about" element={<AboutPage />} />
+            <Route path="/help" element={<HelpPage />} />
+            <Route path="/favorites" element={<FavoritesPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>

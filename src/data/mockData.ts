@@ -1,6 +1,6 @@
 // FixMate — comprehensive mock dataset + domain types (frontend-only MVP)
 
-export type UserRole = "customer" | "provider" | "guest";
+export type UserRole = "customer" | "provider" | "admin" | "guest";
 
 export interface ServiceCategory {
   id: string;
@@ -115,6 +115,8 @@ export interface NotificationItem {
   body: string;
   time: string;
   read: boolean;
+  bookingId?: string;
+  conversationId?: string;
 }
 
 export interface AuthUser {

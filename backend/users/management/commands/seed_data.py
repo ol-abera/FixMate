@@ -266,10 +266,12 @@ class Command(BaseCommand):
                            ("them", "Invoice sent, thanks again!")]),
         ]
         sarah = C["Sarah Jenkins"]
+        conv_by_provider = {}
         for ci, (pn, msgs) in enumerate(convs):
             pu = P(pn).user
             conv = Conversation.objects.create(participant_key="-".join(str(i) for i in sorted([sarah.id, pu.id])))
             conv.participants.add(sarah, pu)
+            conv_by_provider[pn] = conv
             base = now - timedelta(hours=5 * (ci + 1))
             last = None
             for k, (who, text) in enumerate(msgs):
@@ -281,15 +283,20 @@ class Command(BaseCommand):
         # ---- notifications
         alex = P("Alex Rivera").user
         N = NotificationType
-        for rec, typ, title, msg, read in [
-            (sarah, N.BOOKING_ACCEPTED, "Alex accepted your request", "Kitchen sink leak is confirmed.", False),
-            (sarah, N.NEW_MESSAGE, "New message from Diego", "Sounds good, see you then!", False),
-            (sarah, N.REVIEW_REMINDER, "How was Maya?", "Leave a review to help others choose.", True),
-            (alex, N.NEW_BOOKING, "New booking request", "Nina Foster requested Water heater flush.", False),
-            (alex, N.NEW_BOOKING, "New booking request", "Owen Blake requested Bathroom remodel leak.", False),
-            (alex, N.PROVIDER_VERIFICATION, "Verification complete", "Your FixMate pro badge is now active.", True),
+        booking = lambda i: {"booking_id": demo_bookings[i].id}
+        maya_job = Booking.objects.filter(customer=sarah, provider=P("Maya Chen"), status="COMPLETED").first()
+        for rec, typ, title, msg, read, data in [
+            (sarah, N.BOOKING_ACCEPTED, "Alex accepted your request", "Kitchen sink leak is confirmed.", False, booking(0)),
+            (sarah, N.NEW_MESSAGE, "New message from Diego", "Sounds good, see you then!", False,
+             {"conversation_id": conv_by_provider["Diego Santos"].id}),
+            (sarah, N.REVIEW_REMINDER, "How was Maya?", "Leave a review to help others choose.", True,
+             {"booking_id": maya_job.id} if maya_job else {}),
+            (alex, N.NEW_BOOKING, "New booking request", "Nina Foster requested Water heater flush.", False, booking(3)),
+            (alex, N.NEW_BOOKING, "New booking request", "Owen Blake requested Bathroom remodel leak.", False, booking(4)),
+            (alex, N.PROVIDER_VERIFICATION, "Verification complete", "Your FixMate pro badge is now active.", True, {}),
         ]:
-            Notification.objects.create(recipient=rec, notification_type=typ, title=title, message=msg, is_read=read)
+            Notification.objects.create(recipient=rec, notification_type=typ, title=title, message=msg,
+                                        is_read=read, data=data)
 
         self._summary(password, generated)
 
