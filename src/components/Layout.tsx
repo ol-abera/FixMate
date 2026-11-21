@@ -10,7 +10,7 @@ import {
 import { cn } from "../lib/utils";
 import { notificationLink } from "../lib/links";
 import { useApp } from "../context/AppContext";
-import { getCategory, type BookingStatus, type Provider } from "../data/mockData";
+import type { BookingStatus, Provider } from "../data/mockData";
 import { toast } from "sonner";
 
 /* ----------------------------- shared primitives ---------------------------- */
@@ -95,7 +95,7 @@ export function EmptyState({ icon: Icon = Info, title, hint, action }: {
 }
 
 export function ProviderCard({ provider }: { provider: Provider }) {
-  const { favorites, toggleFavorite } = useApp();
+  const { favorites, toggleFavorite, getCategory } = useApp();
   const fav = favorites.includes(provider.id);
   const cat = getCategory(provider.categoryIds[0]);
   return (
@@ -252,6 +252,8 @@ function UserMenu() {
               {user?.role === "customer" && (
                 <button onClick={() => go("/favorites")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Heart size={16} /> Favorites ({favorites.length})</button>
               )}
+              {user?.role === "provider" && <button onClick={() => go("/provider-dashboard/settings")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Wrench size={16} /> Pro profile & services</button>}
+              {user && <button onClick={() => go("/account")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><UserIcon size={16} /> Account settings</button>}
               {user && <button onClick={() => go("/notifications")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Bell size={16} /> Notifications</button>}
               {!user && <button onClick={() => go("/auth")} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><UserIcon size={16} /> Sign in</button>}
               {user && <button onClick={() => { logout(); setOpen(false); navigate("/"); toast.info("Signed out"); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50"><SignOut size={16} /> Sign out</button>}
