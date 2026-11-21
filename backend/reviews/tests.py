@@ -66,3 +66,37 @@ class ReviewTests(TestCase):
         self.assertEqual(r.data["count"], 1)
         r = client_for().get(f"/api/providers/{self.p.id}/reviews/")
         self.assertEqual(r.data["count"], 1)
+
+
+class ReviewModerationTests(TestCase):
+    def setUp(self):
+        from reviews.models import Review
+
+        self.admin = make_user("mod@example.com", role="ADMIN")
+        self.cu = make_user("mc@example.com")
+        self.pu, self.p = make_provider("mp@example.com")
+        self.good = Review.objects.create(customer=self.cu, provider=self.p, booking=make_booking(self.cu, self.p, status="COMPLETED"), rating=5, comment="great")
+        self.bad = Review.objects.create(customer=self.cu, provider=self.p, booking=make_booking(self.cu, self.p, status="COMPLETED", time_slot="14:00 - 16:00"), rating=1, comment="spam link")
+
+    def test_only_admins_moderate(self):
+        for u in (None, self.cu, self.pu):
+            c = client_for(u)
+            self.assertIn(c.get("/api/reviews/moderation/").status_code, (401, 403))
+            self.assertIn(c.post(f"/api/reviews/{self.bad.id}/hide/").status_code, (401, 403))
+
+    def test_hide_and_publish_update_public_list_and_rating(self):
+        c = client_for(self.admin)
+        low = c.get("/api/reviews/moderation/?max_rating=2").data["results"]
+        self.assertEqual([r["id"] for r in low], [self.bad.id])
+        r = c.post(f"/api/reviews/{self.bad.id}/hide/")
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.data["is_published"])
+        self.p.refresh_from_db()
+        self.assertEqual((float(self.p.rating), self.p.total_reviews), (5.0, 1))
+        public = client_for().get(f"/api/reviews/?provider={self.p.id}").data["results"]
+        self.assertEqual([x["id"] for x in public], [self.good.id])
+        hidden = c.get("/api/reviews/moderation/?state=hidden").data["results"]
+        self.assertEqual([x["id"] for x in hidden], [self.bad.id])
+        c.post(f"/api/reviews/{self.bad.id}/publish/")
+        self.p.refresh_from_db()
+        self.assertEqual(self.p.total_reviews, 2)

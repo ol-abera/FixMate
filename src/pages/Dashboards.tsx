@@ -24,7 +24,7 @@ interface ProviderDash {
   recent_reviews: { id: number; author: string; rating: number; comment: string }[];
 }
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+export function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
       <div role="dialog" aria-label={title} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -167,7 +167,7 @@ function JobExtras({ booking, editable }: { booking: BookingRequest; editable?: 
   );
 }
 
-function StatCard({ icon: Icon, label, value, trend, accent }: { icon: typeof House; label: string; value: string; trend?: string; accent?: string }) {
+export function StatCard({ icon: Icon, label, value, trend, accent }: { icon: typeof House; label: string; value: string; trend?: string; accent?: string }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between">

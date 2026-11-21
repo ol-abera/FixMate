@@ -4,7 +4,7 @@ from notifications.services import notify
 from .models import VerificationStatus
 
 
-def set_verification(profile, status):
+def set_verification(profile, status, reason=""):
     """Verify/reject a provider, keep User.is_verified in sync and notify them."""
     if status not in (VerificationStatus.VERIFIED, VerificationStatus.REJECTED, VerificationStatus.PENDING):
         raise ValueError("Invalid verification status")
@@ -17,6 +17,8 @@ def set_verification(profile, status):
         notify(user, NotificationType.PROVIDER_VERIFICATION, "Verification complete",
                "Your FixMate pro badge is now active. You now appear in the marketplace.")
     elif status == VerificationStatus.REJECTED:
-        notify(user, NotificationType.PROVIDER_VERIFICATION, "Verification rejected",
-               "We could not verify your profile. Please update your details or contact support.")
+        body = "We could not verify your profile. Please update your details or contact support."
+        if reason:
+            body = f"We could not verify your profile: {reason} Please update your details or contact support."
+        notify(user, NotificationType.PROVIDER_VERIFICATION, "Verification rejected", body)
     return profile

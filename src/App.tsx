@@ -19,6 +19,7 @@ const BookingWizardPage = named(booking, "BookingWizardPage");
 const CustomerDashboard = named(dashboards, "CustomerDashboard");
 const ProviderDashboard = named(dashboards, "ProviderDashboard");
 const FavoritesPage = named(dashboards, "FavoritesPage");
+const AdminDashboard = named(() => import("./pages/Admin"), "AdminDashboard");
 const AccountSettingsPage = named(settings, "AccountSettingsPage");
 const ProviderSettingsPage = named(settings, "ProviderSettingsPage");
 const MessagesPage = named(misc, "MessagesPage");
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/book/:providerId" element={<RequireAuth><BookingWizardPage /></RequireAuth>} />
             <Route path="/customer-dashboard" element={<RequireAuth roles={["customer"]}><CustomerDashboard /></RequireAuth>} />
             <Route path="/provider-dashboard" element={<RequireAuth roles={["provider"]}><ProviderDashboard /></RequireAuth>} />
+            <Route path="/admin-dashboard" element={<RequireAuth roles={["admin"]}><AdminDashboard /></RequireAuth>} />
             <Route path="/provider-dashboard/settings" element={<RequireAuth roles={["provider"]}><ProviderSettingsPage /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><AccountSettingsPage /></RequireAuth>} />
             <Route path="/messages" element={<RequireAuth><MessagesPage /></RequireAuth>} />

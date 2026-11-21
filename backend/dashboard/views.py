@@ -162,4 +162,25 @@ class AdminDashboardView(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
-        return Response(platform_stats())
+        from users.models import User
+
+        today = timezone.localdate()
+        start = today - timedelta(days=13)
+        days = OrderedDict(((start + timedelta(days=i)).isoformat(), {"bookings": 0, "completed_value": Decimal("0")}) for i in range(14))
+        for b in Booking.objects.filter(created_at__date__gte=start).only("created_at"):
+            days[timezone.localtime(b.created_at).date().isoformat()]["bookings"] += 1
+        done = BookingEvent.objects.filter(status="COMPLETED", created_at__date__gte=start).select_related("booking")
+        for e in done:
+            d = timezone.localtime(e.created_at).date().isoformat()
+            if d in days:
+                days[d]["completed_value"] += e.booking.earned_price or 0
+        by_status = dict(Booking.objects.values_list("status").annotate(n=Count("id")).values_list("status", "n"))
+        signups = User.objects.order_by("-created_at")[:6]
+        return Response({
+            **platform_stats(),
+            "bookings_by_status": by_status,
+            "daily": [{"day": d, **v} for d, v in days.items()],
+            "recent_signups": [
+                {"id": u.id, "name": u.full_name, "email": u.email, "role": u.role, "created_at": u.created_at} for u in signups
+            ],
+        })
