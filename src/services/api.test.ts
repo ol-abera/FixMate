@@ -29,6 +29,18 @@ describe("toProvider", () => {
   });
 });
 
+describe("toProvider distance and pin", () => {
+  it("shows distances only when the search had an origin", () => {
+    expect(toProvider(apiProvider()).distanceKm).toBe(0);
+    expect(toProvider(apiProvider({ distance_km: 3.04 })).distanceKm).toBe(3.04);
+    expect(toProvider(apiProvider({ distance_km: 0 })).distanceKm).toBe(0.1);
+  });
+  it("maps the owner-only pin", () => {
+    expect(toProvider(apiProvider({ pin: { lat: 30.1, lng: -97.2, is_city_center: true } })).pin).toEqual({ lat: 30.1, lng: -97.2, isCityCenter: true });
+    expect(toProvider(apiProvider()).pin).toBeNull();
+  });
+});
+
 describe("toBooking", () => {
   it("maps status, prices, notes and photos", () => {
     const b = toBooking({

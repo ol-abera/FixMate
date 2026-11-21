@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AuthUser, NotificationItem } from "../data/mockData";
 import { formatCount } from "./format";
+import { saveOrigin, savedOrigin } from "./geo";
 import { dashboardPath, notificationLink, safeNext } from "./links";
 import { slotRange, slotsOverlap } from "./slots";
 
@@ -58,5 +59,17 @@ describe("slots", () => {
     expect(slotsOverlap("09:00 - 11:00", "08:00 - 10:00")).toBe(true);
     expect(slotsOverlap("10:00 - 12:00", "12:00 - 14:00")).toBe(false);
     expect(slotsOverlap("bad", "10:00 - 12:00")).toBe(false);
+  });
+});
+
+describe("saved origin", () => {
+  it("round-trips through sessionStorage and ignores junk", () => {
+    expect(savedOrigin()).toBeNull();
+    saveOrigin({ lat: 30.27, lng: -97.74 });
+    expect(savedOrigin()).toEqual({ lat: 30.27, lng: -97.74 });
+    sessionStorage.setItem("fixmate_origin", "{bad json");
+    expect(savedOrigin()).toBeNull();
+    saveOrigin(null);
+    expect(sessionStorage.getItem("fixmate_origin")).toBeNull();
   });
 });

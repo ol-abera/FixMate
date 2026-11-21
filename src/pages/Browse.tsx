@@ -4,9 +4,10 @@ import { motion } from "framer-motion";
 import {
   MagnifyingGlass, MapPin, Star, ShieldCheck, SealCheck, ArrowRight,
   CheckCircle, Clock, CurrencyDollar, ChatCircle, Calendar, Users,
-  Lightning, SlidersHorizontal, X, Quotes, Heart, Camera,
+  Lightning, SlidersHorizontal, X, Quotes, Heart, Camera, NavigationArrow,
 } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
+import { currentPosition, saveOrigin, savedOrigin, type LatLng } from "../lib/geo";
 import { toast } from "sonner";
 import { useApp, useProviderById } from "../context/AppContext";
 import { api, errorMessage } from "../services/api";
@@ -201,6 +202,7 @@ export function HomePage() {
 /* -------------------------------- Explore ---------------------------------- */
 
 const SORTS = [
+  { id: "nearest", label: "Nearest first" },
   { id: "recommended", label: "Recommended" },
   { id: "rating", label: "Top rated" },
   { id: "price_low", label: "Price: low to high" },
@@ -216,8 +218,29 @@ export function ExplorePage() {
   const [minRating, setMinRating] = useState(0);
   const [availableNow, setAvailableNow] = useState(false);
   const [instantOnly, setInstantOnly] = useState(false);
-  const [sort, setSort] = useState("recommended");
+  const [origin, setOrigin] = useState<LatLng | null>(savedOrigin);
+  const [radius, setRadius] = useState(0);
+  const [locating, setLocating] = useState(false);
+  const [sort, setSort] = useState(origin ? "nearest" : "recommended");
   const [showFilters, setShowFilters] = useState(false);
+
+  const locateMe = async () => {
+    setLocating(true);
+    try {
+      const o = await currentPosition();
+      saveOrigin(o);
+      setOrigin(o);
+      setSort("nearest");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't get your location");
+    } finally { setLocating(false); }
+  };
+  const clearLocation = () => {
+    saveOrigin(null);
+    setOrigin(null);
+    setRadius(0);
+    if (sort === "nearest") setSort("recommended");
+  };
 
   // Server-side search/filter/pagination (the marketplace only ever returns VERIFIED pros).
   const [debouncedQuery, setDebouncedQuery] = useState(query);
@@ -226,8 +249,8 @@ export function ExplorePage() {
     return () => clearTimeout(t);
   }, [query]);
 
-  const ordering = sort === "rating" ? "-rating" : sort === "price_low" ? "hourly_rate" : "-rating,-total_reviews";
-  const key = JSON.stringify([debouncedQuery, category, city, maxPrice, minRating, availableNow, instantOnly, ordering]);
+  const ordering = sort === "nearest" && origin ? "distance" : sort === "rating" ? "-rating" : sort === "price_low" ? "hourly_rate" : "-rating,-total_reviews";
+  const key = JSON.stringify([debouncedQuery, category, city, maxPrice, minRating, availableNow, instantOnly, ordering, origin, radius]);
   const [pageState, setPageState] = useState({ key, page: 1 });
   const page = pageState.key === key ? pageState.page : 1;
   const [results, setResults] = useState<Provider[]>([]);
@@ -242,6 +265,7 @@ export function ExplorePage() {
       max_rate: maxPrice < 150 ? maxPrice : undefined,
       rating: minRating || undefined, available_now: availableNow || undefined, instant_book: instantOnly || undefined,
       ordering, page, page_size: 12,
+      lat: origin?.lat, lng: origin?.lng, radius_km: origin && radius ? radius : undefined,
     })
       .then((d) => {
         if (!live) return;
@@ -253,10 +277,28 @@ export function ExplorePage() {
     return () => { live = false; };
   }, [key, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const reset = () => { setQuery(""); setCategory(""); setCity(""); setMaxPrice(150); setMinRating(0); setAvailableNow(false); setInstantOnly(false); };
+  const reset = () => { setQuery(""); setCategory(""); setCity(""); setMaxPrice(150); setMinRating(0); setAvailableNow(false); setInstantOnly(false); setRadius(0); };
 
   const FilterPanel = (
     <div className="space-y-6">
+      <div>
+        <p className="mb-2 text-sm font-semibold text-slate-800">Distance</p>
+        {origin ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
+              <span className="inline-flex items-center gap-1.5"><NavigationArrow size={14} weight="fill" /> Using your location</span>
+              <button onClick={clearLocation} className="font-semibold text-emerald-700 hover:underline">Clear</button>
+            </div>
+            <select value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Search radius" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200">
+              {[0, 5, 10, 25, 50].map((r) => <option key={r} value={r}>{r ? `Within ${r} km` : "Any distance"}</option>)}
+            </select>
+          </div>
+        ) : (
+          <button onClick={locateMe} disabled={locating} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-sm font-medium text-slate-700 hover:border-emerald-300 hover:text-emerald-700 disabled:opacity-60">
+            <NavigationArrow size={15} /> {locating ? "Locating…" : "Use my location"}
+          </button>
+        )}
+      </div>
       <div>
         <p className="mb-2 text-sm font-semibold text-slate-800">Category</p>
         <div className="flex flex-wrap gap-1.5">
@@ -300,7 +342,7 @@ export function ExplorePage() {
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Explore pros</h1>
-          <p className="text-sm text-slate-500">{total} verified pros match your search</p>
+          <p className="text-sm text-slate-500">{total} verified pros match your search{origin && radius ? ` within ${radius} km` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm sm:w-72">
@@ -308,7 +350,7 @@ export function ExplorePage() {
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search skills, pros..." className="w-full bg-transparent py-2.5 text-sm outline-none" />
           </div>
           <select value={sort} onChange={(e) => setSort(e.target.value)} className="hidden rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none sm:block">
-            {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            {SORTS.filter((s) => s.id !== "nearest" || origin).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
           <button onClick={() => setShowFilters((s) => !s)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 lg:hidden">
             <SlidersHorizontal size={16} /> Filters

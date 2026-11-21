@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Camera, CheckCircle, FloppyDisk, Key, PencilSimple, Plus, Trash, UploadSimple, User as UserIcon, X,
+  Camera, CheckCircle, FloppyDisk, Key, MapPin, NavigationArrow, PencilSimple, Plus, Trash, UploadSimple, User as UserIcon, X,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
 import { useApp } from "../context/AppContext";
 import { api, errorMessage } from "../services/api";
+import { currentPosition } from "../lib/geo";
 import { Avatar, SectionHeading } from "../components/Layout";
 import type { Availability, Provider, ProviderService } from "../data/mockData";
 
@@ -167,6 +168,45 @@ export function AccountSettingsPage() {
 
 /* ----------------------------- Provider settings --------------------------- */
 
+function LocationCard({ profile, onSaved }: { profile: Provider; onSaved: (p: Provider) => void }) {
+  const [busy, setBusy] = useState(false);
+  const pin = profile.pin;
+  const save = async (coords: { latitude: number | null; longitude: number | null }, done: string) => {
+    setBusy(true);
+    try { onSaved(await api.updateMyProvider(coords)); toast.success(done); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); }
+  };
+  const pinHere = async () => {
+    setBusy(true);
+    try {
+      const { lat, lng } = await currentPosition();
+      await save({ latitude: lat, longitude: lng }, "Location pinned");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Couldn't get your location"); setBusy(false); }
+  };
+  const status = !pin
+    ? `We don't know where ${profile.city || "your city"} is, so customers searching near them won't see how far away you are. Pin your location to fix that.`
+    : pin.isCityCenter
+      ? `Using the centre of ${profile.city}. Pin your exact base for more accurate distances.`
+      : "Pinned to your base. Customers see an approximate distance, never your exact address.";
+  return (
+    <Card title="Service location" subtitle="Used to sort pros by distance when customers search near them.">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <p className="flex max-w-xl items-start gap-2 text-sm text-slate-600">
+          <MapPin size={18} className={cn("mt-0.5 shrink-0", pin && !pin.isCityCenter ? "text-emerald-600" : "text-slate-400")} weight={pin && !pin.isCityCenter ? "fill" : "regular"} />
+          {status}
+        </p>
+        <div className="flex gap-2">
+          {pin && !pin.isCityCenter && (
+            <button onClick={() => save({ latitude: null, longitude: null }, "Using your city centre")} disabled={busy} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">Reset to city centre</button>
+          )}
+          <button onClick={pinHere} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+            <NavigationArrow size={15} /> {busy ? "Saving…" : "Use my current location"}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 const AVAILABILITY: { id: Availability; label: string }[] = [
   { id: "AVAILABLE", label: "Available now" }, { id: "BUSY", label: "Busy" }, { id: "OFFLINE", label: "Offline" },
 ];
@@ -313,6 +353,8 @@ export function ProviderSettingsPage() {
           <div className="flex justify-end"><SaveButton busy={busy} /></div>
         </form>
       </Card>
+
+      <LocationCard profile={profile} onSaved={setProfile} />
 
       <Card title="Services" subtitle="Each service becomes a pricing card on your profile and can be picked when booking."
         action={<button onClick={() => setEditing({ categoryId: form.categories[0] ?? categories[0]?.id, durationMins: 60, active: true })} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"><Plus size={14} /> Add service</button>}>

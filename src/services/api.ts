@@ -174,7 +174,8 @@ export function toProvider(p: any): Provider {
     avatar: p.avatar || avatarFor(p.name),
     cover: p.cover || `https://picsum.photos/seed/fixmate-${p.id}/1200/400`,
     categoryIds: p.categories ?? [], city: p.city || "",
-    distanceKm: 0, // backend has no geolocation yet; UI hides the distance when 0
+    // Only present when the search had an origin; the UI shows the city instead when it's 0.
+    distanceKm: p.distance_km == null ? 0 : Math.max(Number(p.distance_km), 0.1),
     rating: Number(p.rating), reviewCount: p.total_reviews, hourlyRate: rate, minJobPrice: Number(p.starting_price),
     verified: p.verified, instantBook: p.instant_book, availableNow: p.available_now,
     yearsExperience: p.years_of_experience, jobsCompleted: p.jobs_completed, responseTimeMins: p.response_time_mins,
@@ -183,6 +184,8 @@ export function toProvider(p: any): Provider {
     tiers: buildTiers(rate, Number(p.starting_price), services, p.instant_book),
     portfolio: (p.portfolio ?? []).map((i: any) => ({ id: String(i.id), image: i.image, caption: i.caption ?? "" })),
     favoritesCount: p.favorites_count, availability: p.availability, verificationStatus: p.verification_status,
+    hasLocation: p.has_location,
+    pin: p.pin ? { lat: p.pin.lat, lng: p.pin.lng, isCityCenter: p.pin.is_city_center } : null,
   };
 }
 

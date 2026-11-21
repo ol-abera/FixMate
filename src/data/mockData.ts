@@ -77,6 +77,9 @@ export interface Provider {
   favoritesCount?: number;
   availability?: Availability;
   verificationStatus?: "PENDING" | "VERIFIED" | "REJECTED";
+  hasLocation?: boolean;
+  /** Exact coordinates; only returned to the provider themselves. */
+  pin?: { lat: number; lng: number; isCityCenter: boolean } | null;
 }
 
 export type BookingStatus =
