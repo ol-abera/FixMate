@@ -3,8 +3,10 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { api, errorMessage, tokens } from "../services/api";
-import type {
-  AuthUser, BookingRequest, BookingStatus, Conversation, NotificationItem, Provider,
+import {
+  CATEGORIES, CITIES,
+  type AuthUser, type BookingRequest, type BookingStatus, type Conversation, type NotificationItem, type Provider,
+  type PublicStats, type ServiceCategory,
 } from "../data/mockData";
 
 interface State {
@@ -18,6 +20,7 @@ interface State {
 
 const empty: State = { user: null, providers: [], bookings: [], favorites: [], conversations: [], notifications: [] };
 
+
 export interface NewBooking {
   providerId: string;
   categoryId: string;
@@ -29,6 +32,7 @@ export interface NewBooking {
   contactName: string;
   contactPhone: string;
   contactEmail: string;
+  serviceId?: string;
 }
 
 export interface RegisterInput {
@@ -49,19 +53,29 @@ export interface RegisterInput {
 interface AppContextValue extends State {
   ready: boolean;
   unreadCount: number;
+  /** Live categories from the API (static list until loaded). */
+  categories: ServiceCategory[];
+  stats: PublicStats | null;
+  /** Cities with verified pros (static list until stats load). */
+  cities: string[];
+  getCategory: (id: string) => ServiceCategory | undefined;
+  setUser: (u: AuthUser) => void;
   login: (email: string, password: string) => Promise<AuthUser>;
   register: (input: RegisterInput) => Promise<AuthUser>;
   logout: () => void;
   /** Resolves to the new favourite state, or null if the action was not allowed. */
   toggleFavorite: (providerId: string) => Promise<boolean | null>;
   addBooking: (b: NewBooking) => Promise<BookingRequest>;
-  updateBookingStatus: (id: string, status: BookingStatus) => Promise<void>;
+  updateBookingStatus: (id: string, status: BookingStatus, finalPrice?: number) => Promise<void>;
   submitReview: (bookingId: string, rating: number, comment: string) => Promise<void>;
+  updateReview: (reviewId: string, rating: number, comment: string) => Promise<void>;
+  deleteReview: (reviewId: string) => Promise<void>;
   refreshBookings: () => Promise<void>;
   loadConversation: (id: string) => Promise<void>;
   refreshConversations: () => Promise<void>;
   sendMessage: (conversationId: string, text: string, file?: File) => Promise<void>;
   startConversation: (providerId: string) => Promise<string>;
+  startConversationWithCustomer: (customerId: number) => Promise<string>;
   markAllRead: () => void;
   markRead: (id: string) => void;
   clearNotifications: () => void;
@@ -79,6 +93,8 @@ const upsert = <T extends { id: string }>(list: T[], item: T): T[] =>
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(empty);
   const [ready, setReady] = useState(false);
+  const [categories, setCategories] = useState<ServiceCategory[]>(CATEGORIES);
+  const [stats, setStats] = useState<PublicStats | null>(null);
   const ref = useRef(state);
   ref.current = state;
 
@@ -88,6 +104,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ------------------------------ data loading ----------------------------- */
   const loadPublic = useCallback(async () => {
+    api.categories().then(setCategories).catch((e) => console.error("categories", e));
+    api.stats().then(setStats).catch((e) => console.error("stats", e));
     try {
       const page = await api.providers({ page_size: 24, ordering: "-rating" });
       patch((s) => ({
@@ -206,7 +224,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* -------------------------------- bookings ------------------------------- */
   const addBooking = useCallback(async (b: NewBooking) => {
     const created = await api.createBooking({
-      provider: Number(b.providerId), category: b.categoryId || undefined, title: b.serviceName,
+      provider: Number(b.providerId), service: b.serviceId ? Number(b.serviceId) : undefined,
+      category: b.categoryId || undefined, title: b.serviceName,
       description: b.description, scheduled_date: b.date, time_slot: b.timeSlot, location: b.address,
       contact_name: b.contactName, contact_phone: b.contactPhone, contact_email: b.contactEmail,
     });
@@ -215,11 +234,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return created;
   }, [patch, refreshNotifications]);
 
-  const updateBookingStatus = useCallback(async (id: string, status: BookingStatus) => {
+  const updateBookingStatus = useCallback(async (id: string, status: BookingStatus, finalPrice?: number) => {
     const action = ACTION_FOR[status];
     if (!action) return;
     try {
-      const updated = await api.bookingAction(id, action);
+      const updated = await api.bookingAction(id, action, finalPrice);
       patch((s) => ({ bookings: upsert(s.bookings, updated) }));
     } catch (e) {
       toast.error(errorMessage(e));
@@ -232,6 +251,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await refreshBookings();
   }, [refreshBookings]);
 
+  const updateReview = useCallback(async (reviewId: string, rating: number, comment: string) => {
+    await api.updateReview(reviewId, rating, comment);
+    await refreshBookings();
+  }, [refreshBookings]);
+
+  const deleteReview = useCallback(async (reviewId: string) => {
+    await api.deleteReview(reviewId);
+    await refreshBookings();
+  }, [refreshBookings]);
+
   /* -------------------------------- messaging ------------------------------ */
   const loadConversation = useCallback(async (id: string) => {
     try {
@@ -240,15 +269,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) { console.error("conversation", e); }
   }, [patch]);
 
-  const startConversation = useCallback(async (providerId: string) => {
-    if (!ref.current.user) throw new Error("Sign in to message a pro");
-    if (ref.current.user.role !== "customer") throw new Error("Only customers can start a conversation");
-    const c = await api.startConversation(providerId);
+  const openConversation = useCallback(async (target: { provider: string } | { customer: number }) => {
+    const c = await api.startConversation(target);
     patch((s) => ({
       conversations: s.conversations.some((x) => x.id === c.id) ? s.conversations : [c, ...s.conversations],
     }));
     return c.id;
   }, [patch]);
+
+  const startConversation = useCallback(async (providerId: string) => {
+    if (!ref.current.user) throw new Error("Sign in to message a pro");
+    if (ref.current.user.role !== "customer") throw new Error("Only customers can start a conversation with a pro");
+    return openConversation({ provider: providerId });
+  }, [openConversation]);
+
+  const startConversationWithCustomer = useCallback(async (customerId: number) => {
+    if (ref.current.user?.role !== "provider") throw new Error("Only providers can message customers");
+    return openConversation({ customer: customerId });
+  }, [openConversation]);
+
+  const setUser = useCallback((u: AuthUser) => patch({ user: u }), [patch]);
 
   const sendMessage = useCallback(async (conversationId: string, text: string, file?: File) => {
     try {
@@ -278,11 +318,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     api.clearNotifications().catch((e) => console.error(e));
   }, [patch]);
 
+  const cities = useMemo(() => (stats?.cities.length ? stats.cities : CITIES), [stats]);
+  const getCategory = useCallback((id: string) => categories.find((c) => c.id === id), [categories]);
+
   const unreadCount = useMemo(() => state.notifications.filter((n) => !n.read).length, [state.notifications]);
 
   const value: AppContextValue = {
-    ...state, ready, unreadCount, login, register, logout, toggleFavorite, addBooking, updateBookingStatus,
-    submitReview, refreshBookings, loadConversation, refreshConversations, sendMessage, startConversation,
+    ...state, ready, unreadCount, categories, stats, cities, getCategory, setUser, login, register, logout, toggleFavorite, addBooking,
+    updateBookingStatus, submitReview, updateReview, deleteReview, refreshBookings, loadConversation,
+    refreshConversations, sendMessage, startConversation, startConversationWithCustomer,
     markAllRead, markRead, clearNotifications,
   };
 

@@ -25,7 +25,27 @@ export interface PricingTier {
   price: number;
   unit: string;
   features: string[];
+  serviceId?: string;
 }
+
+export interface ProviderService {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  durationMins: number;
+  categoryId: string;
+  categoryName: string;
+  active: boolean;
+}
+
+export interface PortfolioItem {
+  id: string;
+  image: string;
+  caption: string;
+}
+
+export type Availability = "AVAILABLE" | "BUSY" | "OFFLINE";
 
 export interface Provider {
   id: string;
@@ -52,6 +72,11 @@ export interface Provider {
   gallery: string[];
   tiers: PricingTier[];
   reviews: Review[];
+  services?: ProviderService[];
+  portfolio?: PortfolioItem[];
+  favoritesCount?: number;
+  availability?: Availability;
+  verificationStatus?: "PENDING" | "VERIFIED" | "REJECTED";
 }
 
 export type BookingStatus =
@@ -87,6 +112,9 @@ export interface BookingRequest {
   finalPrice?: number | null;
   canReview?: boolean;
   hasReview?: boolean;
+  customerId?: number;
+  serviceId?: string;
+  review?: { id: string; rating: number; comment: string } | null;
 }
 
 export interface Message {
@@ -126,6 +154,21 @@ export interface AuthUser {
   email: string;
   avatar: string;
   providerId?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  location?: string;
+  bio?: string;
+  hasAvatar?: boolean;
+}
+
+export interface PublicStats {
+  verifiedProviders: number;
+  jobsCompleted: number;
+  avgRating: number;
+  cities: string[];
+  citiesCount: number;
+  featuredReviews: { id: string; author: string; avatar: string; rating: number; text: string; providerName: string; city: string }[];
 }
 
 export const CATEGORIES: ServiceCategory[] = [
